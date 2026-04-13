@@ -4,6 +4,11 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Jätskiauto Helsinki Metro</title>
+  <!-- Open Graph (social sharing preview) -->
+  <meta property="og:title"       content="Jätskiauto Helsinki Metro 🍦" />
+  <meta property="og:description" content="Interactive map of ice cream truck routes across Helsinki, Espoo and Vantaa. 152 routes, live truck tracking." />
+  <meta property="og:type"        content="website" />
+  <meta name="twitter:card"       content="summary" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&family=Orbitron:wght@700;900&display=swap" rel="stylesheet" />
@@ -341,6 +346,33 @@
     }
     .leaflet-tooltip-top::before { border-top-color: rgba(13,7,45,.92) !important; }
 
+    /* ── Loading overlay ── */
+    #loading-overlay {
+      position: fixed; inset: 0; z-index: 9999;
+      background: #0d0b1e;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 14px;
+      transition: opacity 0.5s ease;
+    }
+    #loading-overlay.fade-out { opacity: 0; pointer-events: none; }
+    .lo-title {
+      font-family: var(--font-head); font-size: 26px; font-weight: 900;
+      color: var(--active); letter-spacing: 3px;
+      text-shadow: 0 0 30px rgba(255,46,151,0.75);
+    }
+    .lo-sub { font-size: 13px; color: rgba(0,229,255,0.65); letter-spacing: 2px; }
+    .lo-bar { width: 160px; height: 2px; background: rgba(255,46,151,0.18); border-radius: 2px; overflow: hidden; }
+    .lo-bar-inner {
+      height: 100%; background: var(--active);
+      box-shadow: 0 0 8px rgba(255,46,151,0.8);
+      animation: lo-slide 1.2s ease-in-out infinite;
+    }
+    @keyframes lo-slide {
+      0%   { width:0%;  margin-left:0%; }
+      50%  { width:55%; margin-left:22%; }
+      100% { width:0%;  margin-left:100%; }
+    }
+
     /* ── Marker clusters ── */
     .jatski-cluster {
       background: rgba(13,7,45,0.92); border-radius: 50%;
@@ -367,6 +399,11 @@
   </style>
 </head>
 <body>
+<div id="loading-overlay">
+  <div class="lo-title">🍦 JÄTSKIAUTO</div>
+  <div class="lo-sub">HELSINKI METRO</div>
+  <div class="lo-bar"><div class="lo-bar-inner"></div></div>
+</div>
 <div id="map"></div>
 <script>
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -624,21 +661,15 @@ function renderDate(iso) {
 
   clearRevealTimers();
 
-  const active   = routeLayers.filter(({ route }) =>
-    route.stops.some(s => (s.schedules || []).some(sc => sc.date === iso))
-  );
-  const inactive = routeLayers.filter(({ route }) =>
-    !route.stops.some(s => (s.schedules || []).some(sc => sc.date === iso))
-  );
+  // O(1) lookup via pre-built index instead of O(routes×stops) scan
+  const activeIdx = dateIndex.get(iso) || new Set();
+  const active    = routeLayers.filter((_, i) => activeIdx.has(i));
+  const inactive  = routeLayers.filter((_, i) => !activeIdx.has(i));
 
-  // Instantly dim inactive
+  // Instantly dim inactive (no setPopupContent — popups are built lazily on click)
   inactive.forEach(({ polyline, markers }) => {
     polyline.setStyle({ color: INACTIVE_COLOR, weight: 1.5, opacity: 0.4 });
-    markers.forEach(m => {
-      m._active = false;
-      m.setIcon(makeStopIcon(false, ''));
-      m.setPopupContent(stopPopup(m._stop, iso));
-    });
+    markers.forEach(m => { m._active = false; m.setIcon(makeStopIcon(false, '')); });
   });
 
   // Stagger-reveal active
@@ -650,7 +681,6 @@ function renderDate(iso) {
         const ts = isLive ? stopTimeState(m._stop, iso, t) : '';
         m._active = true;
         m.setIcon(makeStopIcon(true, ts));
-        m.setPopupContent(stopPopup(m._stop, iso));
       });
     }, Math.min(i, 60) * 40);
     revealTimers.push(tid);
@@ -845,6 +875,10 @@ const metaPromise = fetch('./meta.json?v=' + Date.now()).then(r => r.json()).cat
 Promise.all([dataPromise, metaPromise]).then(([data, meta]) => {
   allRoutes = Array.isArray(data) ? data : Object.values(data);
 
+  // ── Pre-build date → Set<routeLayerIndex> index for O(1) renderDate ──────
+  // (populated after routeLayers is built, used in renderDate)
+  const dateIndex = new Map();
+
   // ── Title + language toggle (top-left) ────────────────────────────────────
   new (L.Control.extend({
     onAdd() {
@@ -902,7 +936,7 @@ Promise.all([dataPromise, metaPromise]).then(([data, meta]) => {
 
       dateInput = document.createElement('input');
       dateInput.type = 'date'; dateInput.value = isoToday();
-      dateInput.min = '2026-04-09'; dateInput.max = '2026-09-30';
+      // Range auto-detected from data (set after routeLayers built, patched below)
       dateInput.addEventListener('change', () => { if (dateInput.value) renderDate(dateInput.value); });
       wrap.appendChild(dateInput);
 
@@ -987,7 +1021,10 @@ Promise.all([dataPromise, metaPromise]).then(([data, meta]) => {
   clusterGroup.addTo(map);
 
   // ── Build route layers ────────────────────────────────────────────────────
-  allRoutes.forEach(route => {
+  // ── Build route layers + collect all markers for batch add ──────────────
+  const allMarkers = [];
+
+  allRoutes.forEach((route, routeIdx) => {
     const stops = route.stops;
     if (!stops.length) return;
 
@@ -1000,15 +1037,37 @@ Promise.all([dataPromise, metaPromise]).then(([data, meta]) => {
       const m = L.marker([stop.lat, stop.lon], { icon: makeStopIcon(false, ''), zIndexOffset: 100 });
       m._stop   = stop;
       m._active = false;
-      m.bindPopup(stopPopup(stop, selectedISO), { maxWidth: 260 });
+      // Lazy popup — built only when actually opened (not pre-built for all 6k+ stops)
+      m.bindPopup(() => stopPopup(m._stop, selectedISO), { maxWidth: 260 });
       m.on('popupopen',  () => history.replaceState(null, '', '#stop=' + encodeURIComponent(stop.name) + '&zip=' + stop.zip));
       m.on('popupclose', () => history.replaceState(null, '', location.pathname + location.search));
-      clusterGroup.addLayer(m);
+      allMarkers.push(m);
       return m;
+    });
+
+    // Fill date index
+    stops.forEach(stop => {
+      (stop.schedules || []).forEach(sc => {
+        if (!dateIndex.has(sc.date)) dateIndex.set(sc.date, new Set());
+        dateIndex.get(sc.date).add(routeIdx);
+      });
     });
 
     routeLayers.push({ polyline, markers, route });
   });
+
+  // Batch-add all markers at once (much faster than 6k individual addLayer calls)
+  clusterGroup.addLayers(allMarkers);
+
+  // Auto-detect season date range from data
+  if (dateIndex.size > 0) {
+    const dates = [...dateIndex.keys()].sort();
+    if (dateInput) { dateInput.min = dates[0]; dateInput.max = dates[dates.length - 1]; }
+  }
+
+  // Dismiss loading overlay
+  const overlay = document.getElementById('loading-overlay');
+  if (overlay) { overlay.classList.add('fade-out'); setTimeout(() => overlay.remove(), 600); }
 
   // Initial render + hash restore
   renderDate(isoToday());

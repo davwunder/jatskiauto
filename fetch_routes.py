@@ -73,7 +73,7 @@ def parse_schedule(raw: str) -> dict | None:
         today   = _date.today().isoformat()
         time    = m_today.group(1)
         weekday = WEEKDAY_FI.get(_date.today().strftime("%A").lower())
-        return {"date": today, "time": time, "weekday": weekday}
+        return {"date": today, "time": time}
 
     m = re.match(
         r"^(\w+)\s+(\d{1,2})\.(\d{2})\.(\d{4})\s+klo:\s+(\d{2}:\d{2})$",
@@ -89,7 +89,7 @@ def parse_schedule(raw: str) -> dict | None:
     except ValueError:
         return None
 
-    return {"date": date, "time": time, "weekday": weekday}
+    return {"date": date, "time": time}
 
 
 # ── Route name parsing ────────────────────────────────────────────────────────
@@ -201,7 +201,6 @@ def main(export_js: bool = False) -> None:
                 "zip":       str(props.get("zip")),
                 "lat":       coords[1],
                 "lon":       coords[0],
-                "sequence":  props.get("sequence_on_route"),
                 "phone":     props.get("contact"),
                 "schedules": schedules,
             })
@@ -226,8 +225,8 @@ def main(export_js: bool = False) -> None:
     print(f"📍 Total stops   : {total_stops}")
     print(f"🗓️  No schedules  : {total_no_sched}")
 
-    # Atomic JSON write
-    atomic_write_json(OUTPUT_FILE, routes_output, indent=2)
+    # Atomic JSON write (compact — no indent)
+    atomic_write_json(OUTPUT_FILE, routes_output, ensure_ascii=False, separators=(',', ':'))
     print(f"💾 Saved to {OUTPUT_FILE}")
 
     # meta.json
