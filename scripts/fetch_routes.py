@@ -142,7 +142,7 @@ def main(export_js: bool = False) -> None:
 
     metro_routes = [
         r for r in all_routes
-        if any(z.startswith(METRO_PREFIXES) for z in r.get("zips", []))
+        if any(z != "00000" and z.startswith(METRO_PREFIXES) for z in r.get("zips", []))
     ]
     print(f"  Found {len(metro_routes)} metro route(s).")
 
@@ -180,7 +180,8 @@ def main(export_js: bool = False) -> None:
         features = resp.json().get("features", [])
         metro_stops = [
             f for f in features
-            if str(f["properties"].get("zip", "")).startswith(METRO_PREFIXES)
+            if str(f["properties"].get("zip", "")) not in ("", "00000")
+            and str(f["properties"].get("zip", "")).startswith(METRO_PREFIXES)
         ]
 
         if not metro_stops:
@@ -226,7 +227,7 @@ def main(export_js: bool = False) -> None:
     print(f"🗓️  No schedules  : {total_no_sched}")
 
     # Atomic JSON write (compact — no indent)
-    atomic_write_json(OUTPUT_FILE, routes_output, ensure_ascii=False, separators=(',', ':'))
+    atomic_write_json(OUTPUT_FILE, routes_output, separators=(',', ':'))
     print(f"💾 Saved to {OUTPUT_FILE}")
 
     # meta.json
