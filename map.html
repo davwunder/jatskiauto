@@ -524,6 +524,7 @@ const T = {
 
 const map = L.map('map', { zoomControl: true }).setView([60.25, 24.90], 11);
 map.createPane('tiles');
+map.getPane('tiles').style.zIndex = 200;  // below overlayPane (400) so polylines render on top
 map.getPane('tiles').style.filter = 'brightness(0.58) saturate(0.55) hue-rotate(255deg) sepia(0.08)';
 L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
   attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
