@@ -701,20 +701,49 @@ function applyGeometry(geom, iso) {
     if (!activeIdx.has(idx)) return;
     const path = geom[route.route_id];
     if (!Array.isArray(path) || path.length < 2) return;
-    const perStopTimes = route.stops.map(s => {
+    const stops = route.stops;
+    const perStopTimes = stops.map(s => {
       const sc = (s.schedules || []).find(sc => sc.date === iso);
       return sc ? toMin(sc.time) : null;
     });
-    const hasGap = perStopTimes.some((t, i) =>
-      i > 0 && t != null && perStopTimes[i - 1] != null && (t - perStopTimes[i - 1]) > GAP_MIN
-    );
-    if (hasGap) return;
-    polyline.setLatLngs(path);
-    polyline.redraw();
-    if (iso === isoToday()) {
-      const rm = activeRouteMeta.find(r => r.route.route_id === route.route_id);
-      if (rm) rm.fullCoords = path;
+
+    // Identify gap positions (index i means gap between stop i-1 and stop i)
+    const gapBefore = stops.map((_, i) => {
+      if (i === 0) return false;
+      const t1 = perStopTimes[i - 1], t2 = perStopTimes[i];
+      return t1 != null && t2 != null && (t2 - t1) > GAP_MIN;
+    });
+    const hasGap = gapBefore.some(Boolean);
+
+    if (!hasGap) {
+      // No gaps — apply the full OSRM path directly
+      polyline.setLatLngs(path);
+      polyline.redraw();
+      if (iso === isoToday()) {
+        const rm = activeRouteMeta.find(r => r.route.route_id === route.route_id);
+        if (rm) rm.fullCoords = path;
+      }
+      return;
     }
+
+    // Has gaps — split the OSRM path at each gap boundary into separate segments
+    const stopSegments = [];
+    let seg = [stops[0]];
+    for (let i = 1; i < stops.length; i++) {
+      if (gapBefore[i]) { stopSegments.push(seg); seg = [stops[i]]; }
+      else seg.push(stops[i]);
+    }
+    stopSegments.push(seg);
+
+    const segments = [];
+    for (const stopSeg of stopSegments) {
+      if (stopSeg.length < 2) continue;
+      const startIdx = findClosestIndex(path, stopSeg[0]);
+      const endIdx   = findClosestIndex(path, stopSeg[stopSeg.length - 1]);
+      if (endIdx > startIdx) segments.push(path.slice(startIdx, endIdx + 1));
+    }
+
+    if (segments.length) { polyline.setLatLngs(segments); polyline.redraw(); }
   });
 }
 
