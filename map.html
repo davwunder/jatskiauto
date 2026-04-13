@@ -477,6 +477,7 @@ const INACTIVE_COLOR = '#1e5ab4';
 const DWELL_MIN  = 3;
 const APPEAR_MIN = 5;
 const VANISH_MIN = 5;
+const GAP_MIN    = 30;  // minutes — gaps wider than this break the route line and hide truck
 
 // ── Language strings ──────────────────────────────────────────────────────────
 
@@ -651,6 +652,10 @@ function getTruckPosition(stops, stopTimesMin, t) {
     if (i + 1 < stopTimesMin.length) {
       const next = stopTimesMin[i+1];
       if (t > depart && t < next) {
+        if (next - depart > GAP_MIN) {
+          // Large gap: hide during travel, reappear near next stop
+          return t >= next - APPEAR_MIN ? { lat: stops[i+1].lat, lon: stops[i+1].lon } : null;
+        }
         const p = (t - depart) / (next - depart);
         return {
           lat: stops[i].lat + p * (stops[i+1].lat - stops[i].lat),
@@ -665,10 +670,28 @@ function getTruckPosition(stops, stopTimesMin, t) {
 function findClosestIndex(latlngs, stop) {
   let best = 0, bestD = Infinity;
   latlngs.forEach((ll, i) => {
-    const d = (ll.lat - stop.lat) ** 2 + (ll.lng - stop.lon) ** 2;
+    const lat = ll.lat ?? ll[0], lng = ll.lng ?? ll[1];
+    const d = (lat - stop.lat) ** 2 + (lng - stop.lon) ** 2;
     if (d < bestD) { bestD = d; best = i; }
   });
   return best;
+}
+
+// Build gapped multi-segment latlngs: breaks line where consecutive stops differ > GAP_MIN
+function buildGappedLatlngs(stops, perStopTimes) {
+  const segments = [];
+  let seg = [[stops[0].lat, stops[0].lon]];
+  for (let i = 0; i < stops.length - 1; i++) {
+    const t1 = perStopTimes[i], t2 = perStopTimes[i + 1];
+    if (t1 != null && t2 != null && (t2 - t1) > GAP_MIN) {
+      if (seg.length >= 2) segments.push(seg);
+      seg = [[stops[i + 1].lat, stops[i + 1].lon]];
+    } else {
+      seg.push([stops[i + 1].lat, stops[i + 1].lon]);
+    }
+  }
+  if (seg.length >= 2) segments.push(seg);
+  return segments.length ? segments : [stops.map(s => [s.lat, s.lon])];
 }
 
 // ── Icon makers ───────────────────────────────────────────────────────────────
@@ -693,7 +716,8 @@ let truckTrailBuf= {};
 let selectedISO  = isoToday();
 let animTimer    = null;
 let clusterGroup;
-let dateIndex = new Map();  // date → Set<routeLayerIndex>, populated on data load
+let dateIndex = new Map();       // date → Set<routeLayerIndex>, populated on data load
+let activeRouteMeta = [];        // live-mode per-route state (fullCoords, timesMin, etc.)
 let revealTimers = [];
 
 // DOM refs (set after controls are created)
@@ -746,13 +770,18 @@ function renderDate(iso) {
 
   // Instantly dim inactive (no setPopupContent — popups are built lazily on click)
   inactive.forEach(({ polyline, passedPolyline, markers }) => {
-    polyline.setStyle({ color: INACTIVE_COLOR, weight: 1.5, opacity: 0.4 });
+    polyline.setStyle({ color: INACTIVE_COLOR, weight: 1.5, opacity: 0 });
     if (passedPolyline) passedPolyline.setLatLngs([]);
     markers.forEach(m => { m._active = false; m.setIcon(makeStopIcon(false, '')); });
   });
 
   // Stagger-reveal active
-  active.forEach(({ polyline, markers }, i) => {
+  active.forEach(({ polyline, route: rl, markers }, i) => {
+    const perStopTimes = rl.stops.map(s => {
+      const sc = (s.schedules || []).find(sc => sc.date === iso);
+      return sc ? toMin(sc.time) : null;
+    });
+    polyline.setLatLngs(buildGappedLatlngs(rl.stops, perStopTimes));
     polyline.setStyle({ color: ACTIVE_COLOR, weight: 3, opacity: 0 });
     const tid = setTimeout(() => {
       polyline.setStyle({ opacity: 0.7 });
@@ -807,18 +836,21 @@ function renderDate(iso) {
   if (!isLive) routeLayers.forEach(({ passedPolyline }) => { if (passedPolyline) passedPolyline.setLatLngs([]); });
 
   if (isLive) {
-    const routeMeta = active.map(({ polyline, passedPolyline, route }) => {
+    activeRouteMeta = active.map(({ polyline, passedPolyline, route }) => {
       const stops = route.stops;
       const timesMin = stops.map(s => {
         const sc = (s.schedules || []).find(sc => sc.date === todayISO);
         return sc ? toMin(sc.time) : null;
       }).filter(v => v !== null);
-      return { polyline, passedPolyline, route, stops, timesMin };
+      const hasGap = timesMin.some((t, i) => i > 0 && (t - timesMin[i - 1]) > GAP_MIN);
+      const fullCoords = polyline.getLatLngs().map(ll => [ll.lat ?? ll[0], ll.lng ?? ll[1]]);
+      return { polyline, passedPolyline, route, stops, timesMin, fullCoords, hasGap };
     });
 
     function updateTrucks() {
       const now = nowMin();
-      routeMeta.forEach(({ polyline, passedPolyline, route, stops, timesMin }) => {
+      activeRouteMeta.forEach(rm => {
+      const { polyline, passedPolyline, route, stops, timesMin } = rm;
         const pos = getTruckPosition(stops, timesMin, now);
         const rid = route.route_id;
         if (pos) {
@@ -872,20 +904,22 @@ function renderDate(iso) {
             }).addTo(map));
           }
           // Split route into passed (faded) / upcoming (full) at last departed stop
-          if (passedPolyline) {
+          if (passedPolyline && !rm.hasGap && rm.fullCoords.length > 1) {
             let passedStopIdx = -1;
             for (let i = 0; i < timesMin.length; i++) {
               if (now > timesMin[i] + DWELL_MIN) passedStopIdx = i; else break;
             }
             if (passedStopIdx >= 0) {
-              const all = polyline.getLatLngs();
+              const all = rm.fullCoords;
               const splitIdx = findClosestIndex(all, stops[passedStopIdx]);
               polyline.setLatLngs(all.slice(splitIdx));
               passedPolyline.setLatLngs(all.slice(0, splitIdx + 1));
               passedPolyline.setStyle({ opacity: 0.22, weight: 2 });
               polyline.redraw(); passedPolyline.redraw();
             } else {
+              polyline.setLatLngs(rm.fullCoords);
               passedPolyline.setLatLngs([]);
+              polyline.redraw();
             }
           }
         } else if (truckMarkers[rid] && map.hasLayer(truckMarkers[rid])) {
@@ -920,7 +954,7 @@ function attachHover(polyline, route) {
   });
   polyline.on('mouseout', () => {
     const isActive = route.stops.some(s => (s.schedules || []).some(sc => sc.date === selectedISO));
-    polyline.setStyle({ weight: isActive ? 3 : 1.5, opacity: isActive ? 0.7 : 0.4 });
+    polyline.setStyle({ weight: isActive ? 3 : 1.5, opacity: isActive ? 0.7 : 0 });
     polyline.closeTooltip();
   });
 }
@@ -1172,7 +1206,7 @@ Promise.all([dataPromise, metaPromise]).then(([data, meta]) => {
     if (!stops.length) return;
 
     const polyline = L.polyline(buildRoutedLatlngs(stops), {
-      color: INACTIVE_COLOR, weight: 1.5, opacity: 0.4,
+      color: INACTIVE_COLOR, weight: 1.5, opacity: 0,
     }).addTo(map);
     attachHover(polyline, route);
 
@@ -1227,7 +1261,13 @@ Promise.all([dataPromise, metaPromise]).then(([data, meta]) => {
       routeLayers.forEach(({ polyline, route }, idx) => {
         if (!todayActive.has(idx)) return;
         const path = geom[route.route_id];
-        if (Array.isArray(path) && path.length > 1) { polyline.setLatLngs(path); polyline.redraw(); }
+        if (!Array.isArray(path) || path.length < 2) return;
+        const rm = activeRouteMeta.find(r => r.route.route_id === route.route_id);
+        if (rm && !rm.hasGap) {
+          rm.fullCoords = path;
+          polyline.setLatLngs(path);
+          polyline.redraw();
+        }
       });
     })
     .catch(() => { /* geometry file absent or failed — keep straight lines */ });
