@@ -83,16 +83,9 @@ def osrm_full_path(stops: list[dict]) -> list[list[float]] | None:
     if data.get("code") != "Ok":
         return None
 
-    # Stitch all leg geometries into one path; deduplicate shared endpoints
-    path: list[list[float]] = []
-    for leg in data["routes"][0]["legs"]:
-        coords_raw = leg["geometry"]["coordinates"]
-        leg_latlng = [[c[1], c[0]] for c in coords_raw]
-        if path:
-            # Skip first point of each leg — it's the same as the last of the previous
-            path.extend(leg_latlng[1:])
-        else:
-            path.extend(leg_latlng)
+    # With overview=full, the complete geometry is at the route level (not per leg)
+    coords_raw = data["routes"][0]["geometry"]["coordinates"]
+    path = [[c[1], c[0]] for c in coords_raw]   # flip [lon,lat] → [lat,lon]
 
     return path if path else None
 
