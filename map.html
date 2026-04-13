@@ -185,7 +185,7 @@
     .ctrl-datepanel .route-count {
       font-size: 13px; color: var(--muted); margin-top: 7px; min-height: 18px;
     }
-    .ctrl-datepanel .route-count strong { color: var(--cyan); }
+    .ctrl-datepanel .route-count strong { color: var(--active); }
 
     /* ── Live button ── */
     .btn-live {
@@ -398,6 +398,29 @@
     }
 
     /* ── Mobile ── */
+    /* ── Route list ── */
+    .route-list {
+      margin-top: 6px;
+      max-height: 160px; overflow-y: auto;
+      display: flex; flex-direction: column; gap: 2px;
+    }
+    .route-list:empty { display: none; }
+    .route-list-item {
+      display: flex; align-items: center; justify-content: space-between;
+      width: 100%; text-align: left;
+      padding: 5px 8px; border-radius: 6px;
+      background: rgba(255,46,151,0.06);
+      border: 1px solid rgba(255,46,151,0.12);
+      cursor: pointer; font-family: var(--font);
+      transition: background .15s, border-color .15s;
+    }
+    .route-list-item:hover {
+      background: rgba(255,46,151,0.18);
+      border-color: rgba(255,46,151,0.38);
+    }
+    .rli-id  { font-size: 11px; font-weight: 700; color: var(--text); letter-spacing: 0.3px; }
+    .rli-zip { font-size: 10px; color: var(--muted); margin-left: 6px; }
+
     @media (max-width: 480px) {
       .ctrl-title    { min-width: 0; padding: 8px 10px; gap: 8px; }
       .ctrl-search   { min-width: 0; padding: 7px 9px; }
@@ -409,6 +432,7 @@
       .search-results { max-height: 40vh; overflow-y: auto; }
       .ctrl-datepanel .panel-title { font-size: 8px; }
       .ctrl-datepanel input[type="date"] { font-size: 12px; padding: 6px 8px; }
+      .route-list { max-height: 120px; }
       /* Ensure all tappable buttons meet 44px touch target */
       .btn-live, .btn-geo { min-height: 44px; }
       .leaflet-control-zoom { display: none; }
@@ -445,7 +469,7 @@ const T = {
     upcoming:      'Seuraavat käynnit',
     copyLink:      '🔗 Kopioi linkki',
     noGeo:         'Sijainnin käyttö ei onnistu tässä selaimessa.',
-    geoFailed:     err => 'Sijaintia ei saatu: ' + err,
+    geoFailed:     code => code === 1 ? 'Sijainnin käyttöoikeus evätty. Salli sijainti selaimen asetuksista.' : code === 2 ? 'Sijaintia ei saatu. Laite ei löytänyt sijaintiasi.' : 'Sijainnin haku aikakatkaistiin.',
     noActiveToday: 'Ei aktiivisia reittejä valitulle päivälle.',
     yourLocation:  'Sijaintisi',
     walkLabel:     (min, name, time) => `🚶 ${min} min kävelyä\n${name} klo ${time}`,
@@ -463,7 +487,7 @@ const T = {
     upcoming:      'Upcoming visits',
     copyLink:      '🔗 Copy link',
     noGeo:         'Geolocation is not available in this browser.',
-    geoFailed:     err => 'Location error: ' + err,
+    geoFailed:     code => code === 1 ? 'Location permission denied. Allow location in browser settings.' : code === 2 ? 'Location unavailable. Your device could not determine position.' : 'Location request timed out.',
     noActiveToday: 'No active routes for the selected day.',
     yourLocation:  'Your location',
     walkLabel:     (min, name, time) => `🚶 ${min} min walk\n${name} at ${time}`,
@@ -637,7 +661,7 @@ let dateIndex = new Map();  // date → Set<routeLayerIndex>, populated on data 
 let revealTimers = [];
 
 // DOM refs (set after controls are created)
-let routeCountEl, liveBtn, dateInput, langBtn, searchInputEl, searchResultsEl, panelTitleEl;
+let routeCountEl, routeListEl, liveBtn, dateInput, langBtn, searchInputEl, searchResultsEl, panelTitleEl;
 
 // ── Cluster factory ───────────────────────────────────────────────────────────
 
@@ -716,6 +740,22 @@ function renderDate(iso) {
     routeCountEl.innerHTML = active.length > 0
       ? T[lang].routesActive(active.length)
       : `<span style="color:rgba(245,238,255,.35)">${T[lang].noRoutes}</span>`;
+  }
+
+  // Route list
+  if (routeListEl) {
+    routeListEl.innerHTML = '';
+    active.forEach(({ polyline, route }) => {
+      const label = route.route_id || route.route_name;
+      const zip   = (route.zips && route.zips[0]) || (route.stops && route.stops[0] && route.stops[0].zip) || '';
+      const item  = document.createElement('button');
+      item.className = 'route-list-item';
+      item.innerHTML = `<span class="rli-id">${label}</span>${zip ? `<span class="rli-zip">${zip}</span>` : ''}`;
+      item.addEventListener('click', () => {
+        try { map.fitBounds(polyline.getBounds(), { padding: [50, 50], animate: true, duration: 0.8 }); } catch(e) {}
+      });
+      routeListEl.appendChild(item);
+    });
   }
 
   // Live button
@@ -959,6 +999,10 @@ Promise.all([dataPromise, metaPromise]).then(([data, meta]) => {
       routeCountEl.className = 'route-count';
       wrap.appendChild(routeCountEl);
 
+      routeListEl = document.createElement('div');
+      routeListEl.className = 'route-list';
+      wrap.appendChild(routeListEl);
+
       L.DomEvent.disableClickPropagation(wrap);
       L.DomEvent.disableScrollPropagation(wrap);
       return wrap;
@@ -1021,7 +1065,7 @@ Promise.all([dataPromise, metaPromise]).then(([data, meta]) => {
               }, 700);
             }
           },
-          err => { btn.textContent = '📍'; alert(T[lang].geoFailed(err.message)); },
+          err => { btn.textContent = '📍'; alert(T[lang].geoFailed(err.code)); },
           { timeout: 10000, enableHighAccuracy: false }
         );
       });
