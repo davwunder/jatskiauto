@@ -262,7 +262,7 @@
       box-shadow: 0 0 0 4px rgba(255,230,0,0.28), 0 0 18px rgba(255,230,0,0.7);
       animation: now-pulse 1s ease-in-out infinite;
     }
-    .stop-dot.past { background: #3a3050; opacity: 0.28; box-shadow: none; }
+    .stop-dot.past { background: #ff2e97; opacity: 0.22; box-shadow: none; }
     @keyframes soon-pulse {
       0%,100% { box-shadow: 0 0 0 3px rgba(255,133,200,.28), 0 0 14px rgba(255,133,200,.7); }
       50%      { box-shadow: 0 0 0 6px rgba(255,133,200,.12), 0 0 22px rgba(255,133,200,.45); }
@@ -662,6 +662,15 @@ function getTruckPosition(stops, stopTimesMin, t) {
   return { lat: stops[stops.length-1].lat, lon: stops[stops.length-1].lon };
 }
 
+function findClosestIndex(latlngs, stop) {
+  let best = 0, bestD = Infinity;
+  latlngs.forEach((ll, i) => {
+    const d = (ll.lat - stop.lat) ** 2 + (ll.lng - stop.lon) ** 2;
+    if (d < bestD) { bestD = d; best = i; }
+  });
+  return best;
+}
+
 // ── Icon makers ───────────────────────────────────────────────────────────────
 
 function makeStopIcon(active, timeState) {
@@ -736,16 +745,17 @@ function renderDate(iso) {
   const inactive  = routeLayers.filter((_, i) => !activeIdx.has(i));
 
   // Instantly dim inactive (no setPopupContent — popups are built lazily on click)
-  inactive.forEach(({ polyline, markers }) => {
+  inactive.forEach(({ polyline, passedPolyline, markers }) => {
     polyline.setStyle({ color: INACTIVE_COLOR, weight: 1.5, opacity: 0.4 });
+    if (passedPolyline) passedPolyline.setLatLngs([]);
     markers.forEach(m => { m._active = false; m.setIcon(makeStopIcon(false, '')); });
   });
 
   // Stagger-reveal active
   active.forEach(({ polyline, markers }, i) => {
-    polyline.setStyle({ color: ACTIVE_COLOR, weight: 4, opacity: 0 });
+    polyline.setStyle({ color: ACTIVE_COLOR, weight: 3, opacity: 0 });
     const tid = setTimeout(() => {
-      polyline.setStyle({ opacity: 0.9 });
+      polyline.setStyle({ opacity: 0.7 });
       markers.forEach(m => {
         const ts = isLive ? stopTimeState(m._stop, iso, t) : '';
         m._active = true;
@@ -793,20 +803,22 @@ function renderDate(iso) {
   Object.values(truckMarkers).forEach(m => { if (map.hasLayer(m)) map.removeLayer(m); });
   Object.values(truckTrails).forEach(segs => segs.forEach(pl => { if (map.hasLayer(pl)) map.removeLayer(pl); }));
   truckMarkers = {}; truckTrails = {}; truckTrailBuf = {};
+  // Reset any passed-segment polylines from a previous live session
+  if (!isLive) routeLayers.forEach(({ passedPolyline }) => { if (passedPolyline) passedPolyline.setLatLngs([]); });
 
   if (isLive) {
-    const routeMeta = active.map(({ route }) => {
+    const routeMeta = active.map(({ polyline, passedPolyline, route }) => {
       const stops = route.stops;
       const timesMin = stops.map(s => {
         const sc = (s.schedules || []).find(sc => sc.date === todayISO);
         return sc ? toMin(sc.time) : null;
       }).filter(v => v !== null);
-      return { route, stops, timesMin };
+      return { polyline, passedPolyline, route, stops, timesMin };
     });
 
     function updateTrucks() {
       const now = nowMin();
-      routeMeta.forEach(({ route, stops, timesMin }) => {
+      routeMeta.forEach(({ polyline, passedPolyline, route, stops, timesMin }) => {
         const pos = getTruckPosition(stops, timesMin, now);
         const rid = route.route_id;
         if (pos) {
@@ -859,6 +871,23 @@ function renderDate(iso) {
               interactive: false,
             }).addTo(map));
           }
+          // Split route into passed (faded) / upcoming (full) at last departed stop
+          if (passedPolyline) {
+            let passedStopIdx = -1;
+            for (let i = 0; i < timesMin.length; i++) {
+              if (now > timesMin[i] + DWELL_MIN) passedStopIdx = i; else break;
+            }
+            if (passedStopIdx >= 0) {
+              const all = polyline.getLatLngs();
+              const splitIdx = findClosestIndex(all, stops[passedStopIdx]);
+              polyline.setLatLngs(all.slice(splitIdx));
+              passedPolyline.setLatLngs(all.slice(0, splitIdx + 1));
+              passedPolyline.setStyle({ opacity: 0.22, weight: 2 });
+              polyline.redraw(); passedPolyline.redraw();
+            } else {
+              passedPolyline.setLatLngs([]);
+            }
+          }
         } else if (truckMarkers[rid] && map.hasLayer(truckMarkers[rid])) {
           map.removeLayer(truckMarkers[rid]);
           if (truckTrails[rid]) { truckTrails[rid].forEach(pl => { if (map.hasLayer(pl)) map.removeLayer(pl); }); }
@@ -891,7 +920,7 @@ function attachHover(polyline, route) {
   });
   polyline.on('mouseout', () => {
     const isActive = route.stops.some(s => (s.schedules || []).some(sc => sc.date === selectedISO));
-    polyline.setStyle({ weight: isActive ? 4 : 1.5, opacity: isActive ? 0.9 : 0.4 });
+    polyline.setStyle({ weight: isActive ? 3 : 1.5, opacity: isActive ? 0.7 : 0.4 });
     polyline.closeTooltip();
   });
 }
@@ -1167,7 +1196,10 @@ Promise.all([dataPromise, metaPromise]).then(([data, meta]) => {
       });
     });
 
-    routeLayers.push({ polyline, markers, route });
+    const passedPolyline = L.polyline([], {
+      color: ACTIVE_COLOR, weight: 2, opacity: 0, interactive: false,
+    }).addTo(map);
+    routeLayers.push({ polyline, passedPolyline, markers, route });
   });
 
   // Batch-add all markers at once (much faster than 6k individual addLayer calls)
