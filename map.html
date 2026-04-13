@@ -947,7 +947,7 @@ Promise.all([dataPromise, metaPromise]).then(([data, meta]) => {
       const d = document.createElement('div');
       d.className = 'ctrl-title glass';
       const metaLine = meta?.generated
-        ? `<div class="meta-updated">${meta.generated} · ${meta.routes} reittiä · ${meta.stops} pys.</div>`
+        ? `<div class="meta-updated">Data: ${meta.generated} · ${meta.routes} reittiä · ${meta.stops} pys.</div>`
         : '';
       d.innerHTML = `
         <div class="title-left">

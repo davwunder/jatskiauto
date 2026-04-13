@@ -1,6 +1,7 @@
 espoo_ice_cream_routes.json
 .claude/
 __pycache__/
+scripts/__pycache__/
 *.pyc
 *.tmp
 data.js
