@@ -1,12 +1,13 @@
 """
-enrich_routing.py — Add road-following geometry to ice cream truck routes.
+enrich_routing.py — Pre-compute road-following geometry for ice cream truck routes.
 
-Queries the OSRM public routing API for each route's full stop sequence,
-replacing straight-line connections with actual street paths.
+Queries the OSRM public routing API for each route's full stop sequence and writes
+a compact separate geometry file. The main routes JSON is NOT modified.
 
-Output: metro_ice_cream_routes.json is updated in-place (atomic write).
-Each stop gains a `path_to_next` field: [[lat, lon], ...] waypoints to
-the NEXT stop along real roads, or null for the last stop.
+Output: metro_routes_geometry.json
+  { "11_123_22": [[60.233,24.812],[60.234,24.813],...], ... }
+  Keyed by route_id, value is the full stitched path (all legs concatenated).
+  Estimated size: ~2–4 MB uncompressed, ~500 KB gzipped.
 
 Usage:
     python enrich_routing.py [--dry-run] [--delay 0.25]
@@ -15,13 +16,14 @@ Options:
     --dry-run      Parse and report without writing output
     --delay N      Seconds to sleep between API requests (default 0.25)
     --input FILE   Input JSON file (default metro_ice_cream_routes.json)
-    --output FILE  Output JSON file (default same as input, in-place)
+    --output FILE  Output geometry JSON file (default metro_routes_geometry.json)
+    --force        Re-fetch even if geometry file already exists for a route
 
 Notes:
     • Uses the OSRM public demo server (router.project-osrm.org).
       For production / high-volume use, run your own OSRM instance.
     • ~152 routes → ~152 HTTP requests → roughly 45 seconds at default delay.
-    • Re-running is safe: already-enriched stops are skipped unless --force.
+    • Re-running is safe: already-present route_ids are skipped unless --force.
     • Requires internet access.
 """
 
@@ -36,7 +38,9 @@ import os
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
-OSRM_BASE = "http://router.project-osrm.org/route/v1/driving"
+OSRM_BASE   = "http://router.project-osrm.org/route/v1/driving"
+OUTPUT_FILE = "metro_routes_geometry.json"
+
 
 # ── Atomic write ──────────────────────────────────────────────────────────────
 
@@ -57,59 +61,59 @@ def atomic_write_json(path: str, data, **kwargs) -> None:
 
 # ── OSRM query ────────────────────────────────────────────────────────────────
 
-def osrm_route(stops: list[dict]) -> list[list[list[float]]] | None:
+def osrm_full_path(stops: list[dict]) -> list[list[float]] | None:
     """
     Query OSRM for a route through all stops in order.
-    Returns a list of leg geometries, each a list of [lat, lon] pairs.
+    Returns a single stitched list of [lat, lon] pairs (all legs concatenated).
     Returns None on failure.
     """
     if len(stops) < 2:
         return None
 
     coords = ";".join(f"{s['lon']},{s['lat']}" for s in stops)
-    url = (
-        f"{OSRM_BASE}/{coords}"
-        f"?overview=full&geometries=geojson&steps=false"
-    )
+    url = f"{OSRM_BASE}/{coords}?overview=full&geometries=geojson&steps=false"
 
     try:
         req = urllib.request.Request(url, headers={"User-Agent": "jatskiauto-map/1.0"})
         with urllib.request.urlopen(req, timeout=15) as resp:
             data = json.loads(resp.read())
-    except (urllib.error.URLError, urllib.error.HTTPError, json.JSONDecodeError, TimeoutError) as e:
+    except (urllib.error.URLError, urllib.error.HTTPError, json.JSONDecodeError, TimeoutError):
         return None
 
     if data.get("code") != "Ok":
         return None
 
-    legs = data["routes"][0]["legs"]
-    result = []
-    for leg in legs:
-        # GeoJSON coords are [lon, lat] — flip to [lat, lon] for Leaflet
+    # Stitch all leg geometries into one path; deduplicate shared endpoints
+    path: list[list[float]] = []
+    for leg in data["routes"][0]["legs"]:
         coords_raw = leg["geometry"]["coordinates"]
-        result.append([[c[1], c[0]] for c in coords_raw])
-    return result
+        leg_latlng = [[c[1], c[0]] for c in coords_raw]
+        if path:
+            # Skip first point of each leg — it's the same as the last of the previous
+            path.extend(leg_latlng[1:])
+        else:
+            path.extend(leg_latlng)
+
+    return path if path else None
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main():
-    parser = argparse.ArgumentParser(description="Enrich routes with OSRM road geometry")
+    parser = argparse.ArgumentParser(description="Pre-compute OSRM road geometry")
     parser.add_argument("--dry-run", action="store_true", help="Do not write output")
-    parser.add_argument("--force", action="store_true", help="Re-enrich even if already done")
-    parser.add_argument("--delay", type=float, default=0.25, help="Sleep between API calls (sec)")
-    parser.add_argument("--input",  default="metro_ice_cream_routes.json")
-    parser.add_argument("--output", default=None, help="Output file (default: same as input)")
+    parser.add_argument("--force",   action="store_true", help="Re-fetch already-present routes")
+    parser.add_argument("--delay",   type=float, default=0.25, help="Sleep between API calls (sec)")
+    parser.add_argument("--input",   default="metro_ice_cream_routes.json")
+    parser.add_argument("--output",  default=OUTPUT_FILE)
     args = parser.parse_args()
 
-    output_file = args.output or args.input
-
-    print("🍦 Jätskiauto Route Enrichment (OSRM)")
-    print(f"   Input  : {args.input}")
-    print(f"   Output : {output_file}")
-    print(f"   Delay  : {args.delay}s between requests")
+    print("🍦 Jätskiauto Route Geometry Pre-computation (OSRM)")
+    print(f"   Input    : {args.input}")
+    print(f"   Output   : {args.output}")
+    print(f"   Delay    : {args.delay}s between requests")
     if args.dry_run:
-        print("   Mode   : DRY RUN (no writes)")
+        print("   Mode     : DRY RUN (no writes)")
     print()
 
     with open(args.input, encoding="utf-8") as f:
@@ -118,53 +122,59 @@ def main():
     if not isinstance(routes, list):
         routes = list(routes.values())
 
-    total      = len(routes)
-    enriched   = 0
-    skipped    = 0
-    failed     = 0
+    # Load existing geometry file if present (for incremental updates)
+    geometry: dict[str, list] = {}
+    if os.path.exists(args.output) and not args.force:
+        try:
+            with open(args.output, encoding="utf-8") as f:
+                geometry = json.load(f)
+            print(f"   Loaded {len(geometry)} existing route(s) from {args.output}")
+        except (json.JSONDecodeError, OSError):
+            print(f"   ⚠️  Could not read {args.output} — starting fresh")
+    print()
+
+    total    = len(routes)
+    fetched  = 0
+    skipped  = 0
+    failed   = 0
 
     for i, route in enumerate(routes, 1):
-        stops = route.get("stops", [])
+        route_id = route.get("route_id") or route.get("route_name", f"route_{i}")
+        stops    = route.get("stops", [])
+
         if len(stops) < 2:
             skipped += 1
             continue
 
-        # Check if already enriched (unless --force)
-        already_done = any(s.get("path_to_next") is not None for s in stops[:-1])
-        if already_done and not args.force:
+        if route_id in geometry and not args.force:
             skipped += 1
             continue
 
-        rid = route.get("route_id", f"#{i}")
-        print(f"  [{i:3d}/{total}] {rid:<40} ", end="", flush=True)
+        print(f"  [{i:3d}/{total}] {route_id:<40} ", end="", flush=True)
 
-        legs = osrm_route(stops)
+        path = osrm_full_path(stops)
 
-        if legs and len(legs) == len(stops) - 1:
-            for j, leg_coords in enumerate(legs):
-                stops[j]["path_to_next"] = leg_coords
-            stops[-1]["path_to_next"] = None
-            enriched += 1
-            total_pts = sum(len(l) for l in legs)
-            print(f"✅ {len(legs)} legs, {total_pts} pts")
+        if path:
+            geometry[route_id] = path
+            fetched += 1
+            print(f"✅ {len(path)} pts")
         else:
-            # Fall back: keep straight lines (path_to_next = None)
-            for s in stops:
-                s["path_to_next"] = None
             failed += 1
-            print("⚠️  OSRM failed → straight lines")
+            print("⚠️  OSRM failed → skipped")
 
         if i < total:
             time.sleep(args.delay)
 
     print()
-    print(f"✅ Enriched : {enriched} routes")
-    print(f"⏭️  Skipped  : {skipped} (already done or <2 stops)")
-    print(f"⚠️  Failed   : {failed} (straight lines kept)")
+    print(f"✅ Fetched  : {fetched} route(s)")
+    print(f"⏭️  Skipped  : {skipped} (already present or <2 stops)")
+    print(f"⚠️  Failed   : {failed}")
+    print(f"📦 Total in geometry file: {len(geometry)} route(s)")
 
     if not args.dry_run:
-        atomic_write_json(output_file, routes, ensure_ascii=False, indent=None)
-        print(f"💾 Saved to {output_file}")
+        atomic_write_json(args.output, geometry, ensure_ascii=False, separators=(',', ':'))
+        size_kb = os.path.getsize(args.output) / 1024
+        print(f"💾 Saved to {args.output} ({size_kb:.0f} KB)")
     else:
         print("(dry run — nothing written)")
 

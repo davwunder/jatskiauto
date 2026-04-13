@@ -396,6 +396,23 @@
       border-color: rgba(0,229,255,0.6); color: var(--cyan);
       box-shadow: 0 0 16px rgba(0,229,255,.28);
     }
+
+    /* ── Mobile ── */
+    @media (max-width: 480px) {
+      .ctrl-title    { min-width: 0; padding: 8px 10px; gap: 8px; }
+      .ctrl-search   { min-width: 0; padding: 7px 9px; }
+      .ctrl-datepanel { min-width: 0; padding: 9px 10px; }
+      .title-text    { font-size: 12px; letter-spacing: 1px; }
+      .btn-lang      { font-size: 9px; padding: 4px 8px; }
+      .search-input  { font-size: 12px; padding: 5px 8px; }
+      .search-btn    { width: 36px; height: 36px; }
+      .search-results { max-height: 40vh; overflow-y: auto; }
+      .ctrl-datepanel .panel-title { font-size: 8px; }
+      .ctrl-datepanel input[type="date"] { font-size: 12px; padding: 6px 8px; }
+      /* Ensure all tappable buttons meet 44px touch target */
+      .btn-live, .btn-geo { min-height: 44px; }
+      .leaflet-control-zoom { display: none; }
+    }
   </style>
 </head>
 <body>
@@ -616,6 +633,7 @@ let truckTrailBuf= {};
 let selectedISO  = isoToday();
 let animTimer    = null;
 let clusterGroup;
+let dateIndex = new Map();  // date → Set<routeLayerIndex>, populated on data load
 let revealTimers = [];
 
 // DOM refs (set after controls are created)
@@ -875,9 +893,6 @@ const metaPromise = fetch('./meta.json?v=' + Date.now()).then(r => r.json()).cat
 Promise.all([dataPromise, metaPromise]).then(([data, meta]) => {
   allRoutes = Array.isArray(data) ? data : Object.values(data);
 
-  // ── Pre-build date → Set<routeLayerIndex> index for O(1) renderDate ──────
-  // (populated after routeLayers is built, used in renderDate)
-  const dateIndex = new Map();
 
   // ── Title + language toggle (top-left) ────────────────────────────────────
   new (L.Control.extend({
@@ -1038,7 +1053,7 @@ Promise.all([dataPromise, metaPromise]).then(([data, meta]) => {
       m._stop   = stop;
       m._active = false;
       // Lazy popup — built only when actually opened (not pre-built for all 6k+ stops)
-      m.bindPopup(() => stopPopup(m._stop, selectedISO), { maxWidth: 260 });
+      m.bindPopup(() => stopPopup(m._stop, selectedISO), { maxWidth: Math.min(260, window.innerWidth - 32) });
       m.on('popupopen',  () => history.replaceState(null, '', '#stop=' + encodeURIComponent(stop.name) + '&zip=' + stop.zip));
       m.on('popupclose', () => history.replaceState(null, '', location.pathname + location.search));
       allMarkers.push(m);
@@ -1072,6 +1087,19 @@ Promise.all([dataPromise, metaPromise]).then(([data, meta]) => {
   // Initial render + hash restore
   renderDate(isoToday());
   setTimeout(openStopFromHash, 500);
+
+  // ── Lazy-load OSRM geometry in the background (non-blocking) ────────────────
+  fetch('./metro_routes_geometry.json')
+    .then(r => { if (!r.ok) throw new Error('no geometry file'); return r.json(); })
+    .then(geom => {
+      routeLayers.forEach(({ polyline, route }) => {
+        const path = geom[route.route_id];
+        if (Array.isArray(path) && path.length > 1) {
+          polyline.setLatLngs(path);
+        }
+      });
+    })
+    .catch(() => { /* geometry file absent or failed — keep straight lines */ });
 
 }).catch(err => {
   console.error(err);
