@@ -694,6 +694,30 @@ function buildGappedLatlngs(stops, perStopTimes) {
   return segments.length ? segments : [stops.map(s => [s.lat, s.lon])];
 }
 
+function applyGeometry(geom, iso) {
+  if (!geom) return;
+  const activeIdx = dateIndex.get(iso) || new Set();
+  routeLayers.forEach(({ polyline, route }, idx) => {
+    if (!activeIdx.has(idx)) return;
+    const path = geom[route.route_id];
+    if (!Array.isArray(path) || path.length < 2) return;
+    const perStopTimes = route.stops.map(s => {
+      const sc = (s.schedules || []).find(sc => sc.date === iso);
+      return sc ? toMin(sc.time) : null;
+    });
+    const hasGap = perStopTimes.some((t, i) =>
+      i > 0 && t != null && perStopTimes[i - 1] != null && (t - perStopTimes[i - 1]) > GAP_MIN
+    );
+    if (hasGap) return;
+    polyline.setLatLngs(path);
+    polyline.redraw();
+    if (iso === isoToday()) {
+      const rm = activeRouteMeta.find(r => r.route.route_id === route.route_id);
+      if (rm) rm.fullCoords = path;
+    }
+  });
+}
+
 // ── Icon makers ───────────────────────────────────────────────────────────────
 
 function makeStopIcon(active, timeState) {
@@ -718,6 +742,7 @@ let animTimer    = null;
 let clusterGroup;
 let dateIndex = new Map();       // date → Set<routeLayerIndex>, populated on data load
 let activeRouteMeta = [];        // live-mode per-route state (fullCoords, timesMin, etc.)
+let cachedGeom = null;           // OSRM geometry cache, keyed by route_id
 let revealTimers = [];
 
 // DOM refs (set after controls are created)
@@ -793,6 +818,9 @@ function renderDate(iso) {
     }, Math.min(i, 60) * 40);
     revealTimers.push(tid);
   });
+
+  // Apply cached OSRM road geometry if available (overwrites straight lines)
+  if (cachedGeom) applyGeometry(cachedGeom, iso);
 
   // Refresh cluster icons after animations settle
   const refreshId = setTimeout(
@@ -1184,7 +1212,7 @@ Promise.all([dataPromise, metaPromise]).then(([data, meta]) => {
             }
           },
           err => { btn.textContent = '📍'; alert(T[lang].geoFailed(err.code)); },
-          { timeout: 10000, enableHighAccuracy: false }
+          { timeout: 15000, enableHighAccuracy: true }
         );
       });
       L.DomEvent.disableClickPropagation(btn);
@@ -1257,18 +1285,8 @@ Promise.all([dataPromise, metaPromise]).then(([data, meta]) => {
   fetch('./metro_routes_geometry.json')
     .then(r => { if (!r.ok) throw new Error('no geometry file'); return r.json(); })
     .then(geom => {
-      const todayActive = dateIndex.get(isoToday()) || new Set();
-      routeLayers.forEach(({ polyline, route }, idx) => {
-        if (!todayActive.has(idx)) return;
-        const path = geom[route.route_id];
-        if (!Array.isArray(path) || path.length < 2) return;
-        const rm = activeRouteMeta.find(r => r.route.route_id === route.route_id);
-        if (rm && !rm.hasGap) {
-          rm.fullCoords = path;
-          polyline.setLatLngs(path);
-          polyline.redraw();
-        }
-      });
+      cachedGeom = geom;
+      applyGeometry(geom, selectedISO);
     })
     .catch(() => { /* geometry file absent or failed — keep straight lines */ });
 
