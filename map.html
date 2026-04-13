@@ -253,8 +253,8 @@
       box-shadow: 0 0 10px rgba(30,90,180,0.5);
     }
     .stop-dot.soon {
-      background: var(--cyan);
-      box-shadow: 0 0 0 3px rgba(0,229,255,0.22), 0 0 14px rgba(0,229,255,0.6);
+      background: #ff85c8;
+      box-shadow: 0 0 0 3px rgba(255,133,200,0.28), 0 0 14px rgba(255,133,200,0.7);
       animation: soon-pulse 2s ease-in-out infinite;
     }
     .stop-dot.now {
@@ -264,8 +264,8 @@
     }
     .stop-dot.past { background: #3a3050; opacity: 0.28; box-shadow: none; }
     @keyframes soon-pulse {
-      0%,100% { box-shadow: 0 0 0 3px rgba(0,229,255,.22), 0 0 14px rgba(0,229,255,.6); }
-      50%      { box-shadow: 0 0 0 6px rgba(0,229,255,.1), 0 0 22px rgba(0,229,255,.38); }
+      0%,100% { box-shadow: 0 0 0 3px rgba(255,133,200,.28), 0 0 14px rgba(255,133,200,.7); }
+      50%      { box-shadow: 0 0 0 6px rgba(255,133,200,.12), 0 0 22px rgba(255,133,200,.45); }
     }
     @keyframes now-pulse {
       0%,100% { box-shadow: 0 0 0 4px rgba(255,230,0,.28), 0 0 18px rgba(255,230,0,.7); transform: scale(1); }
@@ -343,6 +343,21 @@
       transition: background .14s, color .14s, box-shadow .14s;
     }
     .popup-copy-btn:hover { background: rgba(255,46,151,.16); color: var(--active); box-shadow: 0 0 10px rgba(255,46,151,.18); }
+
+    /* ── Truck popup ── */
+    .popup-truck { font-family: var(--font); min-width: 180px; }
+    .popup-truck strong { font-family: var(--font-head); font-size: 12px; letter-spacing: 1px; color: var(--active); display: block; margin-bottom: 7px; }
+    .truck-status { font-size: 13px; font-weight: 700; color: var(--text); padding: 6px 0 4px; border-bottom: 1px solid rgba(255,46,151,.12); margin-bottom: 6px; }
+    .truck-status span { font-size: 11px; font-weight: 400; color: var(--muted); }
+    .truck-upcoming { display: flex; flex-direction: column; gap: 3px; }
+    .truck-upcoming div { display: flex; justify-content: space-between; gap: 12px; font-size: 12px; color: rgba(245,238,255,.6); padding: 2px 0; border-bottom: 1px solid rgba(255,46,151,.06); }
+    .truck-upcoming div:last-child { border-bottom: none; }
+    .truck-upcoming div span:last-child { color: var(--muted); white-space: nowrap; }
+
+    /* ── Past visit (today) ── */
+    .popup-time-box.today-past { background: rgba(255,46,151,.03); border: 1px solid rgba(255,46,151,.1); }
+    .popup-time-box.today-past .tbox-label { color: rgba(255,46,151,.45); }
+    .popup-time-box.today-past .tbox-time  { color: rgba(255,46,151,.45); text-shadow: none; }
 
     /* ── Tooltip ── */
     .leaflet-tooltip {
@@ -529,6 +544,9 @@ function nowMin() {
   const n = new Date();
   return n.getHours() * 60 + n.getMinutes() + n.getSeconds() / 60;
 }
+function toHHMM(m) {
+  return String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(Math.round(m) % 60).padStart(2, '0');
+}
 function formatDate(iso) {
   const d = new Date(iso + 'T00:00:00');
   return d.toLocaleDateString(lang === 'fi' ? 'fi-FI' : 'en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
@@ -573,7 +591,8 @@ function stopPopup(stop, selectedISO) {
     <div class="popup-body">`;
 
   if (selSched) {
-    const cls   = isToday ? 'today' : 'other-day';
+    const isPast = isToday && nowMin() > toMin(selSched.time) + DWELL_MIN;
+    const cls   = isToday ? (isPast ? 'today-past' : 'today') : 'other-day';
     const label = isToday ? T[lang].today : formatDate(selectedISO);
     html += `<div class="popup-time-box ${cls}">
       <div><div class="tbox-label">${label}</div><div class="tbox-time">${selSched.time}</div></div>
@@ -793,7 +812,33 @@ function renderDate(iso) {
           if (!truckMarkers[rid]) {
             truckMarkers[rid] = L.marker([pos.lat, pos.lon], {
               icon: makeTruckIcon(), zIndexOffset: 1000,
-            }).addTo(map).bindTooltip(`<strong>${route.route_id}</strong>`);
+            }).addTo(map);
+            truckMarkers[rid].on('click', () => {
+              const t = nowMin();
+              let statusHtml = '';
+              for (let i = 0; i < timesMin.length; i++) {
+                const arrive = timesMin[i], depart = arrive + DWELL_MIN;
+                if (t >= arrive && t <= depart) {
+                  statusHtml = `<div class="truck-status">${stops[i].name}<br><span>klo ${toHHMM(timesMin[i])}</span></div>`;
+                  break;
+                }
+                if (i + 1 < timesMin.length && t > depart && t < timesMin[i + 1]) {
+                  statusHtml = `<div class="truck-status">▶ ${stops[i + 1].name}<br><span>klo ${toHHMM(timesMin[i + 1])}</span></div>`;
+                  break;
+                }
+              }
+              const upcoming = timesMin
+                .map((m, i) => ({ m, s: stops[i] }))
+                .filter(({ m }) => m > t + DWELL_MIN)
+                .slice(0, 3);
+              const upHtml = upcoming.length
+                ? `<div class="truck-upcoming">${upcoming.map(({ m, s }) => `<div><span>${s.name}</span><span>${toHHMM(m)}</span></div>`).join('')}</div>`
+                : '';
+              L.popup({ maxWidth: Math.min(240, window.innerWidth - 32) })
+                .setLatLng(truckMarkers[rid].getLatLng())
+                .setContent(`<div class="popup-truck"><strong>🍦 ${route.route_id}</strong>${statusHtml}${upHtml}</div>`)
+                .openOn(map);
+            });
           } else {
             truckMarkers[rid].setLatLng([pos.lat, pos.lon]);
             if (!map.hasLayer(truckMarkers[rid])) truckMarkers[rid].addTo(map);
@@ -826,6 +871,7 @@ function renderDate(iso) {
       });
     }
     updateTrucks();
+    setTimeout(updateTrucks, 5_000);          // defensive retry in case first call was mid-gap
     animTimer = setInterval(updateTrucks, 30_000);
   }
 }
@@ -1144,11 +1190,11 @@ Promise.all([dataPromise, metaPromise]).then(([data, meta]) => {
   fetch('./metro_routes_geometry.json')
     .then(r => { if (!r.ok) throw new Error('no geometry file'); return r.json(); })
     .then(geom => {
-      routeLayers.forEach(({ polyline, route }) => {
+      const todayActive = dateIndex.get(isoToday()) || new Set();
+      routeLayers.forEach(({ polyline, route }, idx) => {
+        if (!todayActive.has(idx)) return;
         const path = geom[route.route_id];
-        if (Array.isArray(path) && path.length > 1) {
-          polyline.setLatLngs(path);
-        }
+        if (Array.isArray(path) && path.length > 1) polyline.setLatLngs(path);
       });
     })
     .catch(() => { /* geometry file absent or failed — keep straight lines */ });
