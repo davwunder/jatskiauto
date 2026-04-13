@@ -98,6 +98,13 @@
       font-family: var(--font);
       font-size: 9px; color: var(--muted); letter-spacing: 0.2px;
     }
+    .gh-link {
+      font-family: var(--font);
+      font-size: 9px; color: var(--muted); letter-spacing: 0.2px;
+      text-decoration: none; opacity: 0.7;
+      transition: opacity .18s, color .18s;
+    }
+    .gh-link:hover { opacity: 1; color: var(--cyan); }
 
     /* ── Language toggle ── */
     .btn-lang {
@@ -946,6 +953,7 @@ Promise.all([dataPromise, metaPromise]).then(([data, meta]) => {
         <div class="title-left">
           <div class="title-text">🍦 <span class="ice">JÄTSKI</span><span class="cyan">AUTO</span></div>
           ${metaLine}
+          <a class="gh-link" href="https://github.com/davwunder/jatskiauto" target="_blank" rel="noopener">⌥ vibe coding exercise · github</a>
         </div>
         <button class="btn-lang" id="btn-lang">${T[lang].langLabel()}</button>`;
       L.DomEvent.disableClickPropagation(d);
