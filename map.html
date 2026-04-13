@@ -1194,7 +1194,7 @@ Promise.all([dataPromise, metaPromise]).then(([data, meta]) => {
       routeLayers.forEach(({ polyline, route }, idx) => {
         if (!todayActive.has(idx)) return;
         const path = geom[route.route_id];
-        if (Array.isArray(path) && path.length > 1) polyline.setLatLngs(path);
+        if (Array.isArray(path) && path.length > 1) { polyline.setLatLngs(path); polyline.redraw(); }
       });
     })
     .catch(() => { /* geometry file absent or failed — keep straight lines */ });
