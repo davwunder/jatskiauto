@@ -6,372 +6,363 @@
   <title>Jätskiauto Helsinki Metro</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&family=Orbitron:wght@700;900&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
   <style>
-    /* ── Palette ────────────────────────────────────────────────────────────
-       Midnight sun dusk:
-         --bg        deep navy/purple  #2c2a3e
-         --surface   glass panels      rgba(44,40,64,0.82)
-         --border    faint light       rgba(255,255,255,0.13)
-         --active    warm pink         #ff6eb4
-         --gold      golden hour       #ffb347
-         --mint      ice-cream green   #7fffd4
-         --inactive  warm sand         #c4a882
-         --text      soft white        #f0eef8
-         --muted     dimmed            rgba(240,238,248,0.5)
-    ── */
+    /* ── Vice City Palette ───────────────────────────────────────────────────
+       Hot pink / cyan neon on near-black purple
+       Active routes:  hot pink  #ff2e97
+       Inactive routes: steel blue #1e5ab4  (visible, distinct)
+       Accents: cyan #00e5ff, purple #9b2dff, gold #ffe600
+    ─────────────────────────────────────────────────────────────────────── */
     :root {
-      --bg:       #2c2a3e;
-      --surface:  rgba(44, 40, 64, 0.82);
-      --border:   rgba(255, 255, 255, 0.13);
-      --active:   #ff6eb4;
-      --gold:     #ffb347;
-      --mint:     #7fffd4;
-      --text:     #f0eef8;
-      --muted:    rgba(240, 238, 248, 0.5);
-      --inactive: #c4a882;
-      --radius:   16px;
+      --bg:       #0d0b1e;
+      --surface:  rgba(13, 7, 45, 0.93);
+      --border:   rgba(255, 46, 151, 0.22);
+      --active:   #ff2e97;
+      --cyan:     #00e5ff;
+      --purple:   #9b2dff;
+      --gold:     #ffe600;
+      --inactive: #1e5ab4;
+      --text:     #f5eeff;
+      --muted:    rgba(245, 238, 255, 0.45);
+      --radius:   12px;
       --font:     'Nunito', system-ui, sans-serif;
+      --font-head:'Orbitron', 'Nunito', sans-serif;
     }
 
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body, #map { width: 100%; height: 100%; background: var(--bg); font-family: var(--font); }
 
-    /* ── Leaflet attribution dark ── */
+    /* ── Leaflet ── */
     .leaflet-control-attribution {
-      background: rgba(10,10,20,0.55) !important;
-      color: rgba(255,255,255,0.35) !important;
+      background: rgba(13,7,45,0.7) !important;
+      color: rgba(245,238,255,0.3) !important;
       font-size: 10px !important;
     }
-    .leaflet-control-attribution a { color: rgba(255,255,255,0.45) !important; }
+    .leaflet-control-attribution a { color: rgba(255,46,151,0.55) !important; }
     .leaflet-control-zoom a {
       background: var(--surface) !important;
       color: var(--text) !important;
       border-color: var(--border) !important;
       backdrop-filter: blur(12px);
     }
-    .leaflet-control-zoom a:hover { background: rgba(255,110,180,0.25) !important; }
+    .leaflet-control-zoom a:hover {
+      background: rgba(255,46,151,0.18) !important;
+      box-shadow: 0 0 14px rgba(255,46,151,0.3) !important;
+    }
 
-    /* ── Glassmorphism base ── */
+    /* ── Glass base ── */
     .glass {
       background: var(--surface);
-      backdrop-filter: blur(16px);
-      -webkit-backdrop-filter: blur(16px);
+      backdrop-filter: blur(18px);
+      -webkit-backdrop-filter: blur(18px);
       border: 1px solid var(--border);
       border-radius: var(--radius);
-      box-shadow: 0 6px 24px rgba(0,0,0,.32), inset 0 1px 0 rgba(255,255,255,.08);
+      box-shadow: 0 6px 28px rgba(0,0,0,.55),
+                  inset 0 1px 0 rgba(255,255,255,.04),
+                  0 0 0 1px rgba(255,46,151,.06);
     }
 
-    /* ── Title ── */
+    /* ── Title bar ── */
     .ctrl-title {
-      padding: 10px 20px;
-      font-size: 19px;
-      font-weight: 800;
-      color: var(--text);
-      white-space: nowrap;
-      user-select: none;
-      letter-spacing: .2px;
-    }
-    .ctrl-title span.ice  { color: var(--active); }
-    .ctrl-title span.gold { color: var(--gold); }
-    .ctrl-title .meta-updated {
-      font-size: 10px;
-      font-weight: 400;
-      color: var(--muted);
-      margin-top: 1px;
-    }
-
-    /* ── Date panel ── */
-    .ctrl-datepanel {
-      padding: 14px 16px;
-      min-width: 200px;
-    }
-    .ctrl-datepanel .panel-title {
-      font-size: 10px;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 1.2px;
-      color: var(--muted);
-      margin-bottom: 9px;
-    }
-    .ctrl-datepanel input[type="date"] {
-      width: 100%;
-      font-family: var(--font);
-      font-size: 15px;
-      font-weight: 600;
-      color: var(--text);
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 7px 11px;
-      outline: none;
-      cursor: pointer;
-      background: rgba(255,255,255,0.06);
-      transition: border-color .2s, background .2s;
-      color-scheme: dark;
-    }
-    .ctrl-datepanel input[type="date"]:focus {
-      border-color: var(--active);
-      background: rgba(255,110,180,0.08);
-    }
-    .ctrl-datepanel .route-count {
-      font-size: 13px;
-      color: var(--muted);
-      margin-top: 7px;
-      min-height: 18px;
-      transition: opacity .3s;
-    }
-    .ctrl-datepanel .route-count strong { color: var(--mint); }
-
-    /* ── Live / back-to-today button ── */
-    .btn-live {
+      padding: 10px 14px;
       display: flex;
       align-items: center;
-      gap: 7px;
-      border: 1px solid rgba(255,110,180,0.4);
-      border-radius: 14px;
-      padding: 9px 16px;
-      font-family: var(--font);
-      font-size: 14px;
-      font-weight: 700;
-      color: var(--active);
-      cursor: pointer;
-      transition: background .2s, transform .15s, box-shadow .2s;
+      justify-content: space-between;
+      gap: 14px;
+      user-select: none;
+      min-width: 220px;
+    }
+    .title-left { display: flex; flex-direction: column; gap: 2px; }
+    .title-text {
+      font-family: var(--font-head);
+      font-size: 14px; font-weight: 900;
+      letter-spacing: 1.5px; text-transform: uppercase;
+      color: var(--text);
+      text-shadow: 0 0 18px rgba(255,46,151,0.65);
       white-space: nowrap;
-      letter-spacing: .1px;
+    }
+    .title-text .ice  { color: var(--active); }
+    .title-text .cyan { color: var(--cyan); }
+    .meta-updated {
+      font-family: var(--font);
+      font-size: 9px; color: var(--muted); letter-spacing: 0.2px;
+    }
+
+    /* ── Language toggle ── */
+    .btn-lang {
+      font-family: var(--font-head);
+      font-size: 10px; font-weight: 700; letter-spacing: 1px;
+      color: var(--muted);
+      border: 1px solid rgba(255,46,151,0.25);
+      border-radius: 8px; padding: 5px 10px;
+      cursor: pointer; white-space: nowrap;
+      transition: color .18s, border-color .18s, box-shadow .18s;
+      background: transparent;
+    }
+    .btn-lang:hover {
+      color: var(--active);
+      border-color: rgba(255,46,151,0.5);
+      box-shadow: 0 0 10px rgba(255,46,151,0.2);
+    }
+    .btn-lang .al { color: var(--active); }
+
+    /* ── Address search ── */
+    .ctrl-search { padding: 9px 11px; min-width: 220px; position: relative; }
+    .search-row { display: flex; gap: 6px; }
+    .search-input {
+      flex: 1;
+      font-family: var(--font); font-size: 13px; font-weight: 600;
+      color: var(--text);
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,46,151,0.2);
+      border-radius: 8px; padding: 6px 10px; outline: none;
+      transition: border-color .18s, box-shadow .18s;
+    }
+    .search-input::placeholder { color: var(--muted); font-weight: 400; }
+    .search-input:focus {
+      border-color: rgba(0,229,255,0.45);
+      box-shadow: 0 0 12px rgba(0,229,255,0.12);
+    }
+    .search-btn {
+      width: 32px; height: 32px; flex-shrink: 0;
+      border-radius: 8px;
+      background: rgba(255,46,151,0.12);
+      border: 1px solid rgba(255,46,151,0.3);
+      color: var(--active); font-size: 14px;
+      cursor: pointer; display: flex; align-items: center; justify-content: center;
+      transition: background .18s, box-shadow .18s;
+    }
+    .search-btn:hover { background: rgba(255,46,151,0.22); box-shadow: 0 0 12px rgba(255,46,151,0.25); }
+    .search-results {
+      position: absolute; top: 100%; left: 11px; right: 11px; z-index: 9000;
+    }
+    .search-result-item {
+      padding: 7px 11px; font-size: 12px; color: var(--text);
+      cursor: pointer;
+      background: rgba(13,7,45,0.96); backdrop-filter: blur(16px);
+      border: 1px solid rgba(255,46,151,0.15);
+      border-top: none;
+      transition: background .14s;
+    }
+    .search-result-item:first-child { border-top: 1px solid rgba(255,46,151,0.15); border-radius: 8px 8px 0 0; }
+    .search-result-item:last-child  { border-radius: 0 0 8px 8px; }
+    .search-result-item:only-child  { border-radius: 8px; border-top: 1px solid rgba(255,46,151,0.15); }
+    .search-result-item:hover       { background: rgba(255,46,151,0.14); color: var(--active); }
+    .search-result-name { font-weight: 700; }
+    .search-result-sub  { font-size: 10px; color: var(--muted); margin-top: 1px; }
+
+    /* ── Date panel ── */
+    .ctrl-datepanel { padding: 12px 14px; min-width: 200px; }
+    .ctrl-datepanel .panel-title {
+      font-family: var(--font-head);
+      font-size: 9px; font-weight: 700;
+      text-transform: uppercase; letter-spacing: 1.4px;
+      color: var(--muted); margin-bottom: 8px;
+    }
+    .ctrl-datepanel input[type="date"] {
+      width: 100%; font-family: var(--font);
+      font-size: 14px; font-weight: 700; color: var(--text);
+      border: 1px solid rgba(255,46,151,0.25); border-radius: 8px;
+      padding: 7px 10px; outline: none; cursor: pointer;
+      background: rgba(255,255,255,0.05);
+      transition: border-color .18s, box-shadow .18s; color-scheme: dark;
+    }
+    .ctrl-datepanel input[type="date"]:focus {
+      border-color: rgba(0,229,255,0.45);
+      box-shadow: 0 0 12px rgba(0,229,255,0.12);
+    }
+    .ctrl-datepanel .route-count {
+      font-size: 13px; color: var(--muted); margin-top: 7px; min-height: 18px;
+    }
+    .ctrl-datepanel .route-count strong { color: var(--cyan); }
+
+    /* ── Live button ── */
+    .btn-live {
+      display: flex; align-items: center; gap: 7px;
+      border: 1px solid rgba(255,46,151,0.35); border-radius: 12px;
+      padding: 8px 14px; font-family: var(--font);
+      font-size: 13px; font-weight: 700; color: var(--active);
+      cursor: pointer;
+      transition: background .18s, transform .14s, box-shadow .18s;
+      white-space: nowrap;
     }
     .btn-live:hover:not(.is-today) {
-      background: rgba(255,110,180,0.15);
-      transform: translateY(-2px);
-      box-shadow: 0 4px 20px rgba(255,110,180,.25);
+      background: rgba(255,46,151,0.12); transform: translateY(-2px);
+      box-shadow: 0 4px 20px rgba(255,46,151,0.3), 0 0 30px rgba(255,46,151,0.12);
     }
-    .btn-live.is-today {
-      color: var(--muted);
-      border-color: var(--border);
-      cursor: default;
-    }
-    .btn-live .pulse-dot {
+    .btn-live.is-today { color: var(--muted); border-color: rgba(255,255,255,0.1); cursor: default; }
+    .pulse-dot {
       width: 7px; height: 7px; border-radius: 50%;
-      background: var(--active);
-      animation: live-pulse 1.5s ease-in-out infinite;
-      flex-shrink: 0;
+      background: var(--active); box-shadow: 0 0 8px rgba(255,46,151,0.8);
+      animation: live-pulse 1.5s ease-in-out infinite; flex-shrink: 0;
     }
-    .btn-live.is-today .pulse-dot { background: var(--muted); animation: none; }
+    .btn-live.is-today .pulse-dot { background: var(--muted); box-shadow: none; animation: none; }
     @keyframes live-pulse {
-      0%, 100% { opacity: 1;  transform: scale(1); }
-      50%       { opacity: .3; transform: scale(.6); }
+      0%,100% { opacity:1; transform:scale(1); }
+      50%      { opacity:.3; transform:scale(.6); }
     }
 
     /* ── Geolocation button ── */
     .btn-geo {
-      width: 42px; height: 42px;
-      border-radius: 50%;
+      width: 42px; height: 42px; border-radius: 50%;
       display: flex; align-items: center; justify-content: center;
-      font-size: 19px;
-      cursor: pointer;
-      border: 1px solid rgba(127,255,212,0.35);
-      transition: background .2s, transform .15s, box-shadow .2s;
+      font-size: 18px; cursor: pointer;
+      border: 1px solid rgba(0,229,255,0.35);
+      transition: background .18s, transform .14s, box-shadow .18s;
     }
     .btn-geo:hover {
-      background: rgba(127,255,212,0.15) !important;
-      transform: scale(1.1);
-      box-shadow: 0 4px 16px rgba(127,255,212,.2);
+      background: rgba(0,229,255,0.12) !important; transform: scale(1.12);
+      box-shadow: 0 0 18px rgba(0,229,255,0.3);
     }
     .btn-geo:active { transform: scale(.92); }
 
-    /* ── Glowing stop dot ── */
+    /* ── Stop dots ── */
     .stop-dot {
-      width: 12px; height: 12px;
-      border-radius: 50%;
+      width: 12px; height: 12px; border-radius: 50%;
       background: var(--active);
-      box-shadow: 0 0 0 3px rgba(255,110,180,.25), 0 0 12px rgba(255,110,180,.5);
-      transition: transform .2s ease, box-shadow .2s ease;
-      cursor: pointer;
+      box-shadow: 0 0 0 3px rgba(255,46,151,0.2), 0 0 12px rgba(255,46,151,0.5);
+      transition: transform .18s, box-shadow .18s; cursor: pointer;
     }
     .stop-dot:hover {
-      transform: scale(1.7);
-      box-shadow: 0 0 0 4px rgba(255,110,180,.35), 0 0 20px rgba(255,110,180,.7);
+      transform: scale(1.8);
+      box-shadow: 0 0 0 4px rgba(255,46,151,0.3), 0 0 22px rgba(255,46,151,0.8);
     }
     .stop-dot.inactive {
-      background: var(--inactive);
-      opacity: 0.45;
-      box-shadow: none;
+      background: var(--inactive); opacity: 0.55; box-shadow: none;
     }
     .stop-dot.inactive:hover {
-      transform: scale(1.5);
-      opacity: 0.8;
-      box-shadow: 0 0 8px rgba(196,168,130,.4);
+      transform: scale(1.5); opacity: 0.85;
+      box-shadow: 0 0 10px rgba(30,90,180,0.5);
     }
-
-    /* ── Stop time states (today only) ── */
     .stop-dot.soon {
-      background: var(--gold);
-      box-shadow: 0 0 0 3px rgba(255,179,71,.3), 0 0 14px rgba(255,179,71,.6);
+      background: var(--cyan);
+      box-shadow: 0 0 0 3px rgba(0,229,255,0.22), 0 0 14px rgba(0,229,255,0.6);
       animation: soon-pulse 2s ease-in-out infinite;
     }
     .stop-dot.now {
-      background: var(--mint);
-      box-shadow: 0 0 0 4px rgba(127,255,212,.35), 0 0 18px rgba(127,255,212,.7);
+      background: var(--gold);
+      box-shadow: 0 0 0 4px rgba(255,230,0,0.28), 0 0 18px rgba(255,230,0,0.7);
       animation: now-pulse 1s ease-in-out infinite;
     }
-    .stop-dot.past {
-      background: #776e8a;
-      opacity: 0.3;
-      box-shadow: none;
-    }
+    .stop-dot.past { background: #3a3050; opacity: 0.28; box-shadow: none; }
     @keyframes soon-pulse {
-      0%, 100% { box-shadow: 0 0 0 3px rgba(255,179,71,.3), 0 0 14px rgba(255,179,71,.6); }
-      50%       { box-shadow: 0 0 0 6px rgba(255,179,71,.15), 0 0 22px rgba(255,179,71,.4); }
+      0%,100% { box-shadow: 0 0 0 3px rgba(0,229,255,.22), 0 0 14px rgba(0,229,255,.6); }
+      50%      { box-shadow: 0 0 0 6px rgba(0,229,255,.1), 0 0 22px rgba(0,229,255,.38); }
     }
     @keyframes now-pulse {
-      0%, 100% { box-shadow: 0 0 0 4px rgba(127,255,212,.35), 0 0 18px rgba(127,255,212,.7); transform: scale(1); }
-      50%       { box-shadow: 0 0 0 8px rgba(127,255,212,.2), 0 0 26px rgba(127,255,212,.5); transform: scale(1.2); }
+      0%,100% { box-shadow: 0 0 0 4px rgba(255,230,0,.28), 0 0 18px rgba(255,230,0,.7); transform: scale(1); }
+      50%      { box-shadow: 0 0 0 8px rgba(255,230,0,.14), 0 0 28px rgba(255,230,0,.45); transform: scale(1.25); }
     }
 
     /* ── Truck marker ── */
     .truck-marker {
       width: 38px; height: 38px;
-      background: linear-gradient(135deg, #ff6eb4, #ffb347);
-      border-radius: 50%;
-      border: 2.5px solid rgba(255,255,255,0.9);
-      box-shadow: 0 0 0 4px rgba(255,110,180,.3), 0 4px 16px rgba(0,0,0,.4);
-      display: flex; align-items: center; justify-content: center;
-      font-size: 18px;
+      background: linear-gradient(135deg, #ff2e97, #00e5ff);
+      border-radius: 50%; border: 2.5px solid rgba(255,255,255,0.85);
+      box-shadow: 0 0 0 4px rgba(255,46,151,.22), 0 0 22px rgba(255,46,151,.5), 0 4px 16px rgba(0,0,0,.5);
+      display: flex; align-items: center; justify-content: center; font-size: 18px;
       animation: truck-bounce 1.8s ease-in-out infinite;
     }
     @keyframes truck-bounce {
-      0%, 100% { transform: translateY(0)   scale(1);    box-shadow: 0 0 0 4px rgba(255,110,180,.3), 0 4px 16px rgba(0,0,0,.4); }
-      40%       { transform: translateY(-5px) scale(1.08); box-shadow: 0 0 0 6px rgba(255,110,180,.2), 0 10px 24px rgba(0,0,0,.3); }
-      60%       { transform: translateY(-3px) scale(1.05); }
+      0%,100% { transform: translateY(0) scale(1); }
+      40%      { transform: translateY(-5px) scale(1.08); }
+      60%      { transform: translateY(-3px) scale(1.05); }
     }
 
     /* ── Popup ── */
     .leaflet-popup-content-wrapper {
-      background: rgba(38, 34, 58, 0.92) !important;
-      backdrop-filter: blur(20px) !important;
-      -webkit-backdrop-filter: blur(20px) !important;
-      border: 1px solid rgba(255,255,255,0.1) !important;
-      border-radius: 16px !important;
-      box-shadow: 0 8px 32px rgba(0,0,0,.6) !important;
-      padding: 0 !important;
-      overflow: hidden;
-      animation: popup-in .2s ease;
+      background: rgba(13,7,45,0.96) !important;
+      backdrop-filter: blur(20px) !important; -webkit-backdrop-filter: blur(20px) !important;
+      border: 1px solid rgba(255,46,151,0.25) !important;
+      border-radius: 14px !important;
+      box-shadow: 0 8px 32px rgba(0,0,0,.7), 0 0 0 1px rgba(255,46,151,.08) !important;
+      padding: 0 !important; overflow: hidden; animation: popup-in .2s ease;
     }
     @keyframes popup-in {
-      from { opacity: 0; transform: translateY(6px) scale(.97); }
-      to   { opacity: 1; transform: translateY(0)   scale(1); }
+      from { opacity:0; transform:translateY(6px) scale(.97); }
+      to   { opacity:1; transform:translateY(0) scale(1); }
     }
     .leaflet-popup-content { margin: 0 !important; width: auto !important; }
     .leaflet-popup-tip-container { display: none; }
-    .leaflet-popup-close-button {
-      color: var(--muted) !important;
-      font-size: 18px !important;
-      padding: 6px 8px !important;
-    }
-    .leaflet-popup-close-button:hover { color: var(--text) !important; }
+    .leaflet-popup-close-button { color: var(--muted) !important; font-size: 18px !important; padding: 6px 8px !important; }
+    .leaflet-popup-close-button:hover { color: var(--active) !important; }
 
     .popup-stop { font-family: var(--font); min-width: 200px; }
     .popup-header {
-      background: linear-gradient(135deg, rgba(255,110,180,.25), rgba(255,179,71,.18));
-      border-bottom: 1px solid rgba(255,255,255,.08);
-      padding: 12px 16px 10px;
+      background: linear-gradient(135deg, rgba(255,46,151,.18), rgba(155,45,255,.14));
+      border-bottom: 1px solid rgba(255,46,151,.14); padding: 11px 15px 9px;
     }
-    .popup-header .stop-name {
-      font-size: 15px; font-weight: 700;
-      color: var(--text); line-height: 1.2;
-    }
-    .popup-header .stop-zip {
-      font-size: 11px; color: var(--muted); margin-top: 2px;
-    }
-    .popup-body { padding: 11px 16px 14px; }
+    .popup-header .stop-name { font-size: 14px; font-weight: 700; color: var(--text); line-height: 1.2; }
+    .popup-header .stop-zip { font-size: 10px; color: var(--muted); margin-top: 2px; }
+    .popup-body { padding: 10px 15px 13px; }
 
-    .popup-time-box {
-      display: flex; align-items: center; gap: 10px;
-      border-radius: 10px; padding: 7px 11px; margin-bottom: 10px;
-    }
-    .popup-time-box.today {
-      background: rgba(255,110,180,.12);
-      border: 1px solid rgba(255,110,180,.3);
-    }
-    .popup-time-box.other-day {
-      background: rgba(127,255,212,.08);
-      border: 1px solid rgba(127,255,212,.25);
-    }
-    .popup-time-box .tbox-label {
-      font-size: 10px; font-weight: 700;
-      text-transform: uppercase; letter-spacing: .8px;
-    }
-    .popup-time-box.today    .tbox-label { color: var(--active); }
-    .popup-time-box.other-day .tbox-label { color: var(--mint); }
-    .popup-time-box .tbox-time {
-      font-size: 22px; font-weight: 800; line-height: 1;
-    }
-    .popup-time-box.today    .tbox-time { color: var(--active); }
-    .popup-time-box.other-day .tbox-time { color: var(--mint); }
+    .popup-time-box { border-radius: 9px; padding: 7px 11px; margin-bottom: 9px; }
+    .popup-time-box.today    { background: rgba(255,46,151,.1); border: 1px solid rgba(255,46,151,.3); }
+    .popup-time-box.other-day{ background: rgba(0,229,255,.07); border: 1px solid rgba(0,229,255,.25); }
+    .tbox-label { font-size: 9px; font-weight: 700; font-family: var(--font-head); text-transform: uppercase; letter-spacing: 1px; }
+    .popup-time-box.today     .tbox-label { color: var(--active); }
+    .popup-time-box.other-day .tbox-label { color: var(--cyan); }
+    .tbox-time { font-size: 22px; font-weight: 800; line-height: 1; font-family: var(--font-head); }
+    .popup-time-box.today     .tbox-time { color: var(--active); text-shadow: 0 0 12px rgba(255,46,151,.5); }
+    .popup-time-box.other-day .tbox-time { color: var(--cyan); text-shadow: 0 0 12px rgba(0,229,255,.5); }
 
     .popup-upcoming .upcoming-title {
-      font-size: 10px; font-weight: 700;
-      text-transform: uppercase; letter-spacing: .8px;
-      color: var(--muted); margin-bottom: 5px;
+      font-size: 9px; font-weight: 700; font-family: var(--font-head);
+      text-transform: uppercase; letter-spacing: 1px; color: var(--muted); margin-bottom: 5px;
     }
     .popup-upcoming .upcoming-row {
       display: flex; justify-content: space-between; gap: 12px;
-      font-size: 12px; color: rgba(232,230,240,.65); padding: 3px 0;
-      border-bottom: 1px solid rgba(255,255,255,.05);
+      font-size: 12px; color: rgba(245,238,255,.6); padding: 3px 0;
+      border-bottom: 1px solid rgba(255,46,151,.08);
     }
     .popup-upcoming .upcoming-row:last-child { border-bottom: none; }
-    .popup-phone {
-      margin-top: 9px; font-size: 12px;
-      color: rgba(232,230,240,.35);
-    }
+    .popup-phone { margin-top: 8px; font-size: 12px; color: rgba(245,238,255,.32); }
     .popup-copy-btn {
-      display: block; width: 100%; margin-top: 9px;
-      padding: 6px 10px;
-      background: rgba(255,255,255,.05);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      color: var(--muted);
-      font-family: var(--font); font-size: 12px;
-      cursor: pointer; text-align: center;
-      transition: background .15s, color .15s;
+      display: block; width: 100%; margin-top: 9px; padding: 6px 10px;
+      background: rgba(255,46,151,.07); border: 1px solid rgba(255,46,151,.2);
+      border-radius: 8px; color: var(--muted); font-family: var(--font);
+      font-size: 12px; cursor: pointer; text-align: center;
+      transition: background .14s, color .14s, box-shadow .14s;
     }
-    .popup-copy-btn:hover { background: rgba(127,255,212,.12); color: var(--mint); }
+    .popup-copy-btn:hover { background: rgba(255,46,151,.16); color: var(--active); box-shadow: 0 0 10px rgba(255,46,151,.18); }
 
     /* ── Tooltip ── */
     .leaflet-tooltip {
-      background: rgba(20,18,38,.85) !important;
-      backdrop-filter: blur(10px);
-      border: 1px solid var(--border) !important;
-      border-radius: 8px !important;
-      color: var(--text) !important;
-      font-family: var(--font) !important;
-      font-size: 12px !important;
-      box-shadow: 0 4px 12px rgba(0,0,0,.4) !important;
+      background: rgba(13,7,45,.92) !important; backdrop-filter: blur(10px);
+      border: 1px solid rgba(255,46,151,.22) !important; border-radius: 8px !important;
+      color: var(--text) !important; font-family: var(--font) !important;
+      font-size: 12px !important; box-shadow: 0 4px 14px rgba(0,0,0,.5) !important;
     }
-    .leaflet-tooltip-top::before { border-top-color: rgba(20,18,38,.85) !important; }
+    .leaflet-tooltip-top::before { border-top-color: rgba(13,7,45,.92) !important; }
 
-    /* ── Marker cluster custom icons ── */
+    /* ── Marker clusters ── */
     .jatski-cluster {
-      background: rgba(44,40,64,0.90);
-      border: 2px solid rgba(255,110,180,0.45);
-      border-radius: 50%;
+      background: rgba(13,7,45,0.92); border-radius: 50%;
       display: flex; align-items: center; justify-content: center;
-      color: var(--active);
-      font-family: var(--font); font-weight: 700;
-      backdrop-filter: blur(8px);
-      box-shadow: 0 0 10px rgba(255,110,180,.2);
+      font-family: var(--font-head); font-weight: 700; backdrop-filter: blur(8px);
+    }
+    .jatski-cluster.has-active {
+      border: 2px solid rgba(255,46,151,0.6); color: var(--active);
+      box-shadow: 0 0 12px rgba(255,46,151,.28);
+    }
+    .jatski-cluster.all-inactive {
+      border: 2px solid rgba(30,90,180,0.45); color: #5a9fd4;
+      box-shadow: 0 0 8px rgba(30,90,180,.18);
     }
     .jatski-cluster-sm { width: 30px; height: 30px; font-size: 11px; }
     .jatski-cluster-md { width: 40px; height: 40px; font-size: 13px; }
     .jatski-cluster-lg {
       width: 50px; height: 50px; font-size: 15px;
-      border-color: rgba(255,179,71,0.5);
-      color: var(--gold);
-      box-shadow: 0 0 14px rgba(255,179,71,.25);
+    }
+    .jatski-cluster-lg.has-active {
+      border-color: rgba(0,229,255,0.6); color: var(--cyan);
+      box-shadow: 0 0 16px rgba(0,229,255,.28);
     }
   </style>
 </head>
@@ -380,20 +371,60 @@
 <script>
 // ── Constants ────────────────────────────────────────────────────────────────
 
-const ACTIVE_COLOR   = '#ff6eb4';
-const INACTIVE_COLOR = '#c4a882';
+const ACTIVE_COLOR   = '#ff2e97';
+const INACTIVE_COLOR = '#1e5ab4';
 
 const DWELL_MIN  = 3;
 const APPEAR_MIN = 5;
 const VANISH_MIN = 5;
 
+// ── Language strings ──────────────────────────────────────────────────────────
+
+let lang = 'fi';
+const T = {
+  fi: {
+    panelTitle:    'Näytä reitit päivälle',
+    liveBtn:       'Takaisin tänään',
+    routesActive:  n => `<strong>${n}</strong> reitti${n !== 1 ? 'ä' : ''} ajossa`,
+    noRoutes:      'Ei reittejä tälle päivälle',
+    today:         'Tänään',
+    upcoming:      'Seuraavat käynnit',
+    copyLink:      '🔗 Kopioi linkki',
+    noGeo:         'Sijainnin käyttö ei onnistu tässä selaimessa.',
+    geoFailed:     err => 'Sijaintia ei saatu: ' + err,
+    noActiveToday: 'Ei aktiivisia reittejä valitulle päivälle.',
+    yourLocation:  'Sijaintisi',
+    walkLabel:     (min, name, time) => `🚶 ${min} min kävelyä\n${name} klo ${time}`,
+    searchPH:      'Hae osoite...',
+    searchNone:    'Ei tuloksia',
+    stops:         n => `${n} pys.`,
+    langLabel:     () => '<span class="al">FI</span> | EN',
+  },
+  en: {
+    panelTitle:    'Show routes for',
+    liveBtn:       'Back to today',
+    routesActive:  n => `<strong>${n}</strong> route${n !== 1 ? 's' : ''} active`,
+    noRoutes:      'No routes for this day',
+    today:         'Today',
+    upcoming:      'Upcoming visits',
+    copyLink:      '🔗 Copy link',
+    noGeo:         'Geolocation is not available in this browser.',
+    geoFailed:     err => 'Location error: ' + err,
+    noActiveToday: 'No active routes for the selected day.',
+    yourLocation:  'Your location',
+    walkLabel:     (min, name, time) => `🚶 ${min} min walk\n${name} at ${time}`,
+    searchPH:      'Search address...',
+    searchNone:    'No results found',
+    stops:         n => `${n} stops`,
+    langLabel:     () => 'FI | <span class="al">EN</span>',
+  },
+};
+
 // ── Map init ─────────────────────────────────────────────────────────────────
 
 const map = L.map('map', { zoomControl: true }).setView([60.25, 24.90], 11);
-
-// Voyager tiles with a CSS twilight filter applied via the pane
 map.createPane('tiles');
-map.getPane('tiles').style.filter = 'brightness(0.72) saturate(0.55) hue-rotate(200deg) sepia(0.18)';
+map.getPane('tiles').style.filter = 'brightness(0.58) saturate(0.55) hue-rotate(255deg) sepia(0.08)';
 L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
   attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
   subdomains: 'abcd', maxZoom: 19, pane: 'tiles',
@@ -405,38 +436,30 @@ function isoToday() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
-
 function toMin(hhmm) {
   const [h, m] = hhmm.split(':').map(Number);
   return h * 60 + m;
 }
-
 function nowMin() {
   const n = new Date();
   return n.getHours() * 60 + n.getMinutes() + n.getSeconds() / 60;
 }
-
 function formatDate(iso) {
   const d = new Date(iso + 'T00:00:00');
-  return d.toLocaleDateString('fi-FI', { weekday: 'short', day: 'numeric', month: 'short' });
+  return d.toLocaleDateString(lang === 'fi' ? 'fi-FI' : 'en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
 }
-
 function haversineKm(lat1, lon1, lat2, lon2) {
   const R = 6371, toRad = x => x * Math.PI / 180;
-  const dLat = toRad(lat2 - lat1), dLon = toRad(lon2 - lon1);
-  const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon/2)**2;
+  const dLat = toRad(lat2-lat1), dLon = toRad(lon2-lon1);
+  const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)**2;
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
 }
-
-/** Schedules on or after a given ISO date, sorted, first N */
 function upcomingFrom(schedules, fromISO, n = 4) {
   return schedules
     .filter(s => s.date >= fromISO)
     .sort((a, b) => a.date.localeCompare(b.date))
     .slice(0, n);
 }
-
-/** Returns 'now' | 'soon' | 'past' | '' for a stop given current time t (minutes) */
 function stopTimeState(stop, iso, t) {
   const sc = (stop.schedules || []).find(s => s.date === iso);
   if (!sc) return '';
@@ -447,14 +470,15 @@ function stopTimeState(stop, iso, t) {
   return '';
 }
 
-function stopPopup(stop, selectedISO) {
-  const schedules  = stop.schedules || [];
-  const todayISO   = isoToday();
-  const selSched   = schedules.find(s => s.date === selectedISO);
-  const isToday    = selectedISO === todayISO;
-  const upcoming   = upcomingFrom(schedules.filter(s => s.date !== selectedISO), selectedISO);
+// ── Popup ────────────────────────────────────────────────────────────────────
 
-  const hashVal = `stop=${encodeURIComponent(stop.name)}&zip=${stop.zip}`;
+function stopPopup(stop, selectedISO) {
+  const schedules = stop.schedules || [];
+  const todayISO  = isoToday();
+  const selSched  = schedules.find(s => s.date === selectedISO);
+  const isToday   = selectedISO === todayISO;
+  const upcoming  = upcomingFrom(schedules.filter(s => s.date !== selectedISO), selectedISO);
+  const hashVal   = `stop=${encodeURIComponent(stop.name)}&zip=${stop.zip}`;
 
   let html = `<div class="popup-stop">
     <div class="popup-header">
@@ -464,30 +488,21 @@ function stopPopup(stop, selectedISO) {
     <div class="popup-body">`;
 
   if (selSched) {
-    if (isToday) {
-      html += `<div class="popup-time-box today">
-        <div><div class="tbox-label">Tänään</div><div class="tbox-time">${selSched.time}</div></div>
-      </div>`;
-    } else {
-      const label = formatDate(selectedISO);
-      html += `<div class="popup-time-box other-day">
-        <div><div class="tbox-label">${label}</div><div class="tbox-time">${selSched.time}</div></div>
-      </div>`;
-    }
+    const cls   = isToday ? 'today' : 'other-day';
+    const label = isToday ? T[lang].today : formatDate(selectedISO);
+    html += `<div class="popup-time-box ${cls}">
+      <div><div class="tbox-label">${label}</div><div class="tbox-time">${selSched.time}</div></div>
+    </div>`;
   }
-
   if (upcoming.length) {
-    html += `<div class="popup-upcoming">
-      <div class="upcoming-title">Seuraavat käynnit</div>`;
+    html += `<div class="popup-upcoming"><div class="upcoming-title">${T[lang].upcoming}</div>`;
     upcoming.forEach(s => {
       html += `<div class="upcoming-row"><span>${formatDate(s.date)}</span><span>${s.time}</span></div>`;
     });
     html += `</div>`;
   }
-
   if (stop.phone) html += `<div class="popup-phone">📞 ${stop.phone}</div>`;
-
-  html += `<button class="popup-copy-btn" onclick="copyStopLink('${hashVal}')">🔗 Kopioi linkki</button>`;
+  html += `<button class="popup-copy-btn" onclick="copyStopLink('${hashVal}')">${T[lang].copyLink}</button>`;
   html += `</div></div>`;
   return html;
 }
@@ -495,38 +510,24 @@ function stopPopup(stop, selectedISO) {
 function copyStopLink(hashVal) {
   const url = location.href.split('#')[0] + '#' + hashVal;
   navigator.clipboard.writeText(url).catch(() => {
-    // Fallback: select temp input
     const inp = document.createElement('input');
-    inp.value = url;
-    document.body.appendChild(inp);
-    inp.select();
-    document.execCommand('copy');
-    document.body.removeChild(inp);
+    inp.value = url; document.body.appendChild(inp); inp.select();
+    document.execCommand('copy'); document.body.removeChild(inp);
   });
 }
 
-// ── Routed polyline geometry ──────────────────────────────────────────────────
+// ── Routed geometry ───────────────────────────────────────────────────────────
 
-/**
- * Build the array of [lat, lon] points for a route's polyline.
- * If stops have path_to_next (OSRM road geometry), stitch those together.
- * Falls back to straight stop-to-stop lines if path_to_next is absent.
- */
 function buildRoutedLatlngs(stops) {
-  // Check if any stop has road geometry
   const hasRouting = stops.some(s => Array.isArray(s.path_to_next) && s.path_to_next.length > 0);
-  if (!hasRouting) {
-    return stops.map(s => [s.lat, s.lon]);
-  }
+  if (!hasRouting) return stops.map(s => [s.lat, s.lon]);
   const pts = [[stops[0].lat, stops[0].lon]];
   for (let i = 0; i < stops.length - 1; i++) {
     const leg = stops[i].path_to_next;
     if (Array.isArray(leg) && leg.length > 0) {
-      // leg already starts at stops[i] position — skip first point to avoid duplicates
       leg.slice(1).forEach(p => pts.push(p));
     } else {
-      // Fallback straight line to next stop
-      pts.push([stops[i + 1].lat, stops[i + 1].lon]);
+      pts.push([stops[i+1].lat, stops[i+1].lon]);
     }
   }
   return pts;
@@ -536,14 +537,14 @@ function buildRoutedLatlngs(stops) {
 
 function getTruckPosition(stops, stopTimesMin, t) {
   if (!stopTimesMin.length) return null;
-  const first = stopTimesMin[0], last = stopTimesMin[stopTimesMin.length - 1];
+  const first = stopTimesMin[0], last = stopTimesMin[stopTimesMin.length-1];
   if (t < first - APPEAR_MIN || t > last + VANISH_MIN) return null;
   if (t < first) return { lat: stops[0].lat, lon: stops[0].lon };
   for (let i = 0; i < stopTimesMin.length; i++) {
     const arrive = stopTimesMin[i], depart = arrive + DWELL_MIN;
     if (t >= arrive && t <= depart) return { lat: stops[i].lat, lon: stops[i].lon };
     if (i + 1 < stopTimesMin.length) {
-      const next = stopTimesMin[i + 1];
+      const next = stopTimesMin[i+1];
       if (t > depart && t < next) {
         const p = (t - depart) / (next - depart);
         return {
@@ -556,42 +557,34 @@ function getTruckPosition(stops, stopTimesMin, t) {
   return { lat: stops[stops.length-1].lat, lon: stops[stops.length-1].lon };
 }
 
+// ── Icon makers ───────────────────────────────────────────────────────────────
+
 function makeStopIcon(active, timeState) {
   let cls = 'stop-dot';
-  if (!active) {
-    cls += ' inactive';
-  } else if (timeState) {
-    cls += ' ' + timeState;
-  }
-  return L.divIcon({
-    html: `<div class="${cls}"></div>`,
-    className: '',
-    iconSize: [12, 12],
-    iconAnchor: [6, 6],
-  });
+  if (!active) cls += ' inactive';
+  else if (timeState) cls += ' ' + timeState;
+  return L.divIcon({ html: `<div class="${cls}"></div>`, className: '', iconSize: [12,12], iconAnchor: [6,6] });
 }
-
 function makeTruckIcon() {
-  return L.divIcon({
-    html: '<div class="truck-marker">🍦</div>',
-    className: '', iconSize: [38,38], iconAnchor: [19,19],
-  });
+  return L.divIcon({ html: '<div class="truck-marker">🍦</div>', className: '', iconSize: [38,38], iconAnchor: [19,19] });
 }
 
 // ── State ────────────────────────────────────────────────────────────────────
 
 let allRoutes    = [];
-let routeLayers  = [];   // { polyline, markers[], route }
+let routeLayers  = [];
 let truckMarkers = {};
-let truckTrails  = {};   // rid → [L.polyline, ...]  fading trail segments
-let truckTrailBuf= {};   // rid → [ {lat,lon}, ... ] rolling buffer of last 5 positions
+let truckTrails  = {};
+let truckTrailBuf= {};
 let selectedISO  = isoToday();
 let animTimer    = null;
-let routeCountEl, liveBtn, dateInput;
 let clusterGroup;
-let revealTimers = [];   // clearable timers for animated route reveal
+let revealTimers = [];
 
-// ── Cluster group factory ─────────────────────────────────────────────────────
+// DOM refs (set after controls are created)
+let routeCountEl, liveBtn, dateInput, langBtn, searchInputEl, searchResultsEl, panelTitleEl;
+
+// ── Cluster factory ───────────────────────────────────────────────────────────
 
 function makeCluster() {
   return L.markerClusterGroup({
@@ -599,21 +592,22 @@ function makeCluster() {
     disableClusteringAtZoom: 14,
     spiderfyOnMaxZoom: true,
     iconCreateFunction(cluster) {
-      const n = cluster.getChildCount();
+      const children = cluster.getAllChildMarkers();
+      const hasActive = children.some(m => m._active === true);
+      const n   = cluster.getChildCount();
+      const act = hasActive ? 'has-active' : 'all-inactive';
       let sz = 'sm', w = 30;
-      if (n >= 50)  { sz = 'lg'; w = 50; }
+      if (n >= 50) { sz = 'lg'; w = 50; }
       else if (n >= 15) { sz = 'md'; w = 40; }
       return L.divIcon({
-        html: `<div class="jatski-cluster jatski-cluster-${sz}">${n}</div>`,
-        className: '',
-        iconSize: [w, w],
-        iconAnchor: [w/2, w/2],
+        html: `<div class="jatski-cluster jatski-cluster-${sz} ${act}">${n}</div>`,
+        className: '', iconSize: [w,w], iconAnchor: [w/2,w/2],
       });
     },
   });
 }
 
-// ── Animated reveal helpers ───────────────────────────────────────────────────
+// ── Reveal helpers ────────────────────────────────────────────────────────────
 
 function clearRevealTimers() {
   revealTimers.forEach(id => clearTimeout(id));
@@ -630,7 +624,6 @@ function renderDate(iso) {
 
   clearRevealTimers();
 
-  // Separate active / inactive routes for staggered reveal
   const active   = routeLayers.filter(({ route }) =>
     route.stops.some(s => (s.schedules || []).some(sc => sc.date === iso))
   );
@@ -638,54 +631,61 @@ function renderDate(iso) {
     !route.stops.some(s => (s.schedules || []).some(sc => sc.date === iso))
   );
 
-  // Instantly dim inactive routes
-  inactive.forEach(({ polyline, markers, route }) => {
-    polyline.setStyle({ color: INACTIVE_COLOR, weight: 1.5, opacity: 0.35 });
+  // Instantly dim inactive
+  inactive.forEach(({ polyline, markers }) => {
+    polyline.setStyle({ color: INACTIVE_COLOR, weight: 1.5, opacity: 0.4 });
     markers.forEach(m => {
+      m._active = false;
       m.setIcon(makeStopIcon(false, ''));
       m.setPopupContent(stopPopup(m._stop, iso));
     });
   });
 
-  // Stagger-reveal active routes (50 ms apart, max 30 at once then batch)
-  active.forEach(({ polyline, markers, route }, i) => {
+  // Stagger-reveal active
+  active.forEach(({ polyline, markers }, i) => {
     polyline.setStyle({ color: ACTIVE_COLOR, weight: 4, opacity: 0 });
-    const id = setTimeout(() => {
+    const tid = setTimeout(() => {
       polyline.setStyle({ opacity: 0.9 });
       markers.forEach(m => {
         const ts = isLive ? stopTimeState(m._stop, iso, t) : '';
+        m._active = true;
         m.setIcon(makeStopIcon(true, ts));
         m.setPopupContent(stopPopup(m._stop, iso));
       });
     }, Math.min(i, 60) * 40);
-    revealTimers.push(id);
+    revealTimers.push(tid);
   });
 
-  // Active route count
-  const activeCount = active.length;
-  routeCountEl.innerHTML = activeCount > 0
-    ? `<strong>${activeCount}</strong> reitti${activeCount !== 1 ? 'ä' : ''} ajossa`
-    : `<span style="color:#ccc">Ei reittejä tälle päivälle</span>`;
+  // Refresh cluster icons after animations settle
+  const refreshId = setTimeout(
+    () => clusterGroup && clusterGroup.refreshClusters(),
+    Math.min(active.length, 60) * 40 + 80
+  );
+  revealTimers.push(refreshId);
 
-  // Live button state
-  liveBtn.classList.toggle('is-today', isLive);
+  // Route count
+  if (routeCountEl) {
+    routeCountEl.innerHTML = active.length > 0
+      ? T[lang].routesActive(active.length)
+      : `<span style="color:rgba(245,238,255,.35)">${T[lang].noRoutes}</span>`;
+  }
 
-  // Trucks: only animate for today
+  // Live button
+  if (liveBtn) liveBtn.classList.toggle('is-today', isLive);
+
+  // Trucks: clear and restart only for today
   if (animTimer) { clearInterval(animTimer); animTimer = null; }
   Object.values(truckMarkers).forEach(m => { if (map.hasLayer(m)) map.removeLayer(m); });
   Object.values(truckTrails).forEach(segs => segs.forEach(pl => { if (map.hasLayer(pl)) map.removeLayer(pl); }));
-  truckMarkers = {};
-  truckTrails  = {};
-  truckTrailBuf= {};
+  truckMarkers = {}; truckTrails = {}; truckTrailBuf = {};
 
   if (isLive) {
-    const todayRoutes = active;
-    const routeMeta = todayRoutes.map(({ route }) => {
+    const routeMeta = active.map(({ route }) => {
       const stops = route.stops;
-      const timesMin = stops.map(stop => {
-        const sc = (stop.schedules || []).find(s => s.date === todayISO);
+      const timesMin = stops.map(s => {
+        const sc = (s.schedules || []).find(sc => sc.date === todayISO);
         return sc ? toMin(sc.time) : null;
-      }).filter(t => t !== null);
+      }).filter(v => v !== null);
       return { route, stops, timesMin };
     });
 
@@ -695,96 +695,61 @@ function renderDate(iso) {
         const pos = getTruckPosition(stops, timesMin, now);
         const rid = route.route_id;
         if (pos) {
-          // Update / create truck marker
           if (!truckMarkers[rid]) {
             truckMarkers[rid] = L.marker([pos.lat, pos.lon], {
               icon: makeTruckIcon(), zIndexOffset: 1000,
-            }).addTo(map).bindTooltip(
-              `<span style="font-family:Nunito,sans-serif">${route.route_id}</span>`
-            );
+            }).addTo(map).bindTooltip(`<strong>${route.route_id}</strong>`);
           } else {
             truckMarkers[rid].setLatLng([pos.lat, pos.lon]);
             if (!map.hasLayer(truckMarkers[rid])) truckMarkers[rid].addTo(map);
           }
-
-          // Truck trail: rolling buffer of last 5 positions
+          // Trail
           if (!truckTrailBuf[rid]) truckTrailBuf[rid] = [];
-          const buf = truckTrailBuf[rid];
-          buf.push([pos.lat, pos.lon]);
-          if (buf.length > 6) buf.shift();
-
-          // Remove old trail segments
-          if (truckTrails[rid]) {
-            truckTrails[rid].forEach(pl => { if (map.hasLayer(pl)) map.removeLayer(pl); });
-          }
+          truckTrailBuf[rid].push([pos.lat, pos.lon]);
+          if (truckTrailBuf[rid].length > 6) truckTrailBuf[rid].shift();
+          if (truckTrails[rid]) truckTrails[rid].forEach(pl => { if (map.hasLayer(pl)) map.removeLayer(pl); });
           truckTrails[rid] = [];
-
-          // Draw new trail: N-1 short polylines with decreasing opacity
-          const opacities = [0.65, 0.45, 0.28, 0.14, 0.06];
+          const buf = truckTrailBuf[rid];
+          const ops = [0.65, 0.45, 0.28, 0.14, 0.06];
           for (let j = 0; j < buf.length - 1; j++) {
-            const seg = L.polyline([buf[j], buf[j+1]], {
-              color: ACTIVE_COLOR,
-              weight: 3,
-              opacity: opacities[Math.max(0, opacities.length - (buf.length - 1) + j)],
+            truckTrails[rid].push(L.polyline([buf[j], buf[j+1]], {
+              color: ACTIVE_COLOR, weight: 3,
+              opacity: ops[Math.max(0, ops.length - (buf.length-1) + j)],
               interactive: false,
-            }).addTo(map);
-            truckTrails[rid].push(seg);
+            }).addTo(map));
           }
-
         } else if (truckMarkers[rid] && map.hasLayer(truckMarkers[rid])) {
           map.removeLayer(truckMarkers[rid]);
-          if (truckTrails[rid]) {
-            truckTrails[rid].forEach(pl => { if (map.hasLayer(pl)) map.removeLayer(pl); });
-            delete truckTrails[rid];
-            delete truckTrailBuf[rid];
-          }
+          if (truckTrails[rid]) { truckTrails[rid].forEach(pl => { if (map.hasLayer(pl)) map.removeLayer(pl); }); }
+          delete truckMarkers[rid]; delete truckTrails[rid]; delete truckTrailBuf[rid];
         }
       });
-
-      // Update stop glow states for today
+      // Update stop glow states
       const t2 = nowMin();
-      routeLayers.forEach(({ markers, route }) => {
-        const active2 = route.stops.some(s => (s.schedules || []).some(sc => sc.date === todayISO));
-        if (active2) {
-          markers.forEach(m => {
-            const ts = stopTimeState(m._stop, todayISO, t2);
-            m.setIcon(makeStopIcon(true, ts));
-          });
-        }
+      active.forEach(({ markers }) => {
+        markers.forEach(m => { m.setIcon(makeStopIcon(true, stopTimeState(m._stop, todayISO, t2))); });
       });
     }
-
     updateTrucks();
     animTimer = setInterval(updateTrucks, 30_000);
   }
 }
 
-// ── Polyline hover (route highlight) ─────────────────────────────────────────
+// ── Polyline hover ────────────────────────────────────────────────────────────
 
 function attachHover(polyline, route) {
-  let hoverActive = false;
   polyline.on('mouseover', () => {
-    hoverActive = true;
     const isActive = route.stops.some(s => (s.schedules || []).some(sc => sc.date === selectedISO));
     if (!isActive) return;
     polyline.setStyle({ weight: 7, opacity: 1.0 });
     polyline.bringToFront();
-    const stopCount = route.stops.length;
-    const day = route.weekday
-      ? route.weekday.charAt(0).toUpperCase() + route.weekday.slice(1)
-      : '?';
-    polyline.bindTooltip(
-      `<strong>${route.route_id}</strong><br>${day} · ${stopCount} pysäkkiä`,
-      { sticky: true, direction: 'top' }
-    ).openTooltip();
+    const day = route.weekday ? route.weekday.charAt(0).toUpperCase() + route.weekday.slice(1) : '?';
+    polyline.bindTooltip(`<strong>${route.route_id}</strong><br>${day} · ${T[lang].stops(route.stops.length)}`,
+      { sticky: true, direction: 'top' }).openTooltip();
   });
   polyline.on('mouseout', () => {
-    hoverActive = false;
     const isActive = route.stops.some(s => (s.schedules || []).some(sc => sc.date === selectedISO));
-    polyline.setStyle({
-      weight:  isActive ? 4 : 1.5,
-      opacity: isActive ? 0.9 : 0.35,
-    });
+    polyline.setStyle({ weight: isActive ? 4 : 1.5, opacity: isActive ? 0.9 : 0.4 });
     polyline.closeTooltip();
   });
 }
@@ -805,222 +770,262 @@ function findNearestStop(userLat, userLon) {
   return { stop: best, marker: bestMarker, distKm: bestDist };
 }
 
-// ── URL hash sharing ──────────────────────────────────────────────────────────
+// ── URL hash ──────────────────────────────────────────────────────────────────
 
 function parseHash() {
-  const hash = location.hash.slice(1);
-  if (!hash) return null;
-  const p = new URLSearchParams(hash);
+  const h = location.hash.slice(1); if (!h) return null;
+  const p = new URLSearchParams(h);
   return { name: p.get('stop'), zip: p.get('zip') };
 }
-
 function openStopFromHash() {
-  const h = parseHash();
-  if (!h || !h.name) return;
+  const h = parseHash(); if (!h || !h.name) return;
   for (const { markers } of routeLayers) {
     for (const m of markers) {
       if (m._stop.name === h.name && (!h.zip || m._stop.zip === h.zip)) {
-        // Zoom to show the marker and open its popup
-        clusterGroup.zoomToShowLayer(m, () => {
-          m.openPopup();
-          map.panTo(m.getLatLng());
-        });
+        clusterGroup.zoomToShowLayer(m, () => { m.openPopup(); map.panTo(m.getLatLng()); });
         return;
       }
     }
   }
 }
 
+// ── Language switch ───────────────────────────────────────────────────────────
+
+function switchLang() {
+  lang = lang === 'fi' ? 'en' : 'fi';
+  if (langBtn)       langBtn.innerHTML        = T[lang].langLabel();
+  if (panelTitleEl)  panelTitleEl.textContent = T[lang].panelTitle;
+  if (searchInputEl) searchInputEl.placeholder= T[lang].searchPH;
+  if (liveBtn)       liveBtn.innerHTML        = `<span class="pulse-dot"></span> ${T[lang].liveBtn}`;
+  renderDate(selectedISO);
+}
+
+// ── Address search (Nominatim) ────────────────────────────────────────────────
+
+let searchPin = null;
+async function doSearch(query) {
+  if (!query.trim() || !searchResultsEl) return;
+  searchResultsEl.innerHTML = '';
+  try {
+    const url = `https://nominatim.openstreetmap.org/search?format=json&limit=5&countrycodes=fi&q=${encodeURIComponent(query)}`;
+    const results = await (await fetch(url, { headers: { 'Accept-Language': lang === 'fi' ? 'fi' : 'en' } })).json();
+    if (!results.length) {
+      searchResultsEl.innerHTML = `<div class="search-result-item" style="color:var(--muted)">${T[lang].searchNone}</div>`;
+      return;
+    }
+    results.forEach(r => {
+      const item = document.createElement('div');
+      item.className = 'search-result-item';
+      const parts = r.display_name.split(', ');
+      item.innerHTML = `<div class="search-result-name">${parts[0]}</div><div class="search-result-sub">${parts.slice(1,3).join(', ')}</div>`;
+      item.addEventListener('click', () => {
+        if (searchPin && map.hasLayer(searchPin)) map.removeLayer(searchPin);
+        const latlng = [parseFloat(r.lat), parseFloat(r.lon)];
+        map.flyTo(latlng, 15, { duration: 1.2 });
+        searchPin = L.circleMarker(latlng, {
+          radius: 8, color: '#00e5ff', fillColor: '#00e5ff',
+          fillOpacity: 0.55, weight: 2.5, interactive: false,
+        }).addTo(map).bindPopup(`<span style="font-family:Nunito,sans-serif;font-size:12px;color:#f5eeff">${parts[0]}</span>`).openPopup();
+        searchResultsEl.innerHTML = '';
+        if (searchInputEl) searchInputEl.value = '';
+      });
+      searchResultsEl.appendChild(item);
+    });
+  } catch(e) { console.error('Nominatim error', e); }
+}
+map.on('click', () => { if (searchResultsEl) searchResultsEl.innerHTML = ''; });
+
 // ── Main ─────────────────────────────────────────────────────────────────────
 
-// Try static data.js bundle first (GitHub Pages), then fetch JSON
 const dataPromise = (typeof window.ROUTE_DATA !== 'undefined')
   ? Promise.resolve(window.ROUTE_DATA)
   : fetch('./metro_ice_cream_routes.json?v=' + Date.now()).then(r => r.json());
+const metaPromise = fetch('./meta.json?v=' + Date.now()).then(r => r.json()).catch(() => null);
 
-// Also load meta.json for last-updated display
-const metaPromise = fetch('./meta.json?v=' + Date.now())
-  .then(r => r.json())
-  .catch(() => null);
+Promise.all([dataPromise, metaPromise]).then(([data, meta]) => {
+  allRoutes = Array.isArray(data) ? data : Object.values(data);
 
-Promise.all([dataPromise, metaPromise])
-  .then(([data, meta]) => {
-    allRoutes = Array.isArray(data) ? data : Object.values(data);
+  // ── Title + language toggle (top-left) ────────────────────────────────────
+  new (L.Control.extend({
+    onAdd() {
+      const d = document.createElement('div');
+      d.className = 'ctrl-title glass';
+      const metaLine = meta?.generated
+        ? `<div class="meta-updated">${meta.generated} · ${meta.routes} reittiä · ${meta.stops} pys.</div>`
+        : '';
+      d.innerHTML = `
+        <div class="title-left">
+          <div class="title-text">🍦 <span class="ice">JÄTSKI</span><span class="cyan">AUTO</span></div>
+          ${metaLine}
+        </div>
+        <button class="btn-lang" id="btn-lang">${T[lang].langLabel()}</button>`;
+      L.DomEvent.disableClickPropagation(d);
+      L.DomEvent.disableScrollPropagation(d);
+      return d;
+    }
+  }))({ position: 'topleft' }).addTo(map);
+  langBtn = document.getElementById('btn-lang');
+  langBtn.addEventListener('click', switchLang);
 
-    // ── Title ──────────────────────────────────────────────────────────────
-    new (L.Control.extend({
-      onAdd() {
-        const d = document.createElement('div');
-        d.className = 'ctrl-title glass';
-        let inner = '🍦 <span class="ice">Jätski</span><span class="gold">auto</span> Helsinki Metro';
-        if (meta && meta.generated) {
-          inner += `<div class="meta-updated">Päivitetty ${meta.generated} · ${meta.routes} reittiä · ${meta.stops} pysäkkiä</div>`;
-        }
-        d.innerHTML = inner;
-        return d;
-      }
-    }))({ position: 'topleft' }).addTo(map);
+  // ── Address search (top-left, below title) ────────────────────────────────
+  new (L.Control.extend({
+    onAdd() {
+      const wrap = document.createElement('div');
+      wrap.className = 'ctrl-search glass';
+      wrap.innerHTML = `
+        <div class="search-row">
+          <input class="search-input" id="search-input" type="text"
+            placeholder="${T[lang].searchPH}" autocomplete="off" />
+          <button class="search-btn" id="search-btn">🔍</button>
+        </div>
+        <div class="search-results" id="search-results"></div>`;
+      L.DomEvent.disableClickPropagation(wrap);
+      L.DomEvent.disableScrollPropagation(wrap);
+      return wrap;
+    }
+  }))({ position: 'topleft' }).addTo(map);
+  searchInputEl   = document.getElementById('search-input');
+  searchResultsEl = document.getElementById('search-results');
+  searchInputEl.addEventListener('keydown', e => { if (e.key === 'Enter') doSearch(searchInputEl.value); });
+  document.getElementById('search-btn').addEventListener('click', () => doSearch(searchInputEl.value));
 
-    // ── Date panel ─────────────────────────────────────────────────────────
-    new (L.Control.extend({
-      onAdd() {
-        const wrap = document.createElement('div');
-        wrap.className = 'ctrl-datepanel glass';
+  // ── Date panel (top-right) ────────────────────────────────────────────────
+  new (L.Control.extend({
+    onAdd() {
+      const wrap = document.createElement('div');
+      wrap.className = 'ctrl-datepanel glass';
 
-        const title = document.createElement('div');
-        title.className = 'panel-title';
-        title.textContent = 'Näytä reitit päivälle';
-        wrap.appendChild(title);
+      panelTitleEl = document.createElement('div');
+      panelTitleEl.className = 'panel-title';
+      panelTitleEl.textContent = T[lang].panelTitle;
+      wrap.appendChild(panelTitleEl);
 
-        dateInput = document.createElement('input');
-        dateInput.type = 'date';
-        dateInput.value = isoToday();
-        dateInput.min = '2026-04-09';
-        dateInput.max = '2026-09-30';
-        dateInput.addEventListener('change', () => {
-          if (dateInput.value) renderDate(dateInput.value);
-        });
-        wrap.appendChild(dateInput);
+      dateInput = document.createElement('input');
+      dateInput.type = 'date'; dateInput.value = isoToday();
+      dateInput.min = '2026-04-09'; dateInput.max = '2026-09-30';
+      dateInput.addEventListener('change', () => { if (dateInput.value) renderDate(dateInput.value); });
+      wrap.appendChild(dateInput);
 
-        routeCountEl = document.createElement('div');
-        routeCountEl.className = 'route-count';
-        wrap.appendChild(routeCountEl);
+      routeCountEl = document.createElement('div');
+      routeCountEl.className = 'route-count';
+      wrap.appendChild(routeCountEl);
 
-        return wrap;
-      }
-    }))({ position: 'topright' }).addTo(map);
+      L.DomEvent.disableClickPropagation(wrap);
+      L.DomEvent.disableScrollPropagation(wrap);
+      return wrap;
+    }
+  }))({ position: 'topright' }).addTo(map);
 
-    // ── Live button ────────────────────────────────────────────────────────
-    new (L.Control.extend({
-      onAdd() {
-        liveBtn = document.createElement('button');
-        liveBtn.className = 'btn-live glass is-today';
-        liveBtn.innerHTML = '<span class="pulse-dot"></span> Takaisin tähän päivään';
-        liveBtn.addEventListener('click', () => {
-          const t = isoToday();
-          dateInput.value = t;
-          renderDate(t);
-        });
-        L.DomEvent.disableClickPropagation(liveBtn);
-        L.DomEvent.disableScrollPropagation(liveBtn);
-        return liveBtn;
-      }
-    }))({ position: 'bottomright' }).addTo(map);
-
-    // ── Geolocation button ─────────────────────────────────────────────────
-    new (L.Control.extend({
-      onAdd() {
-        const btn = document.createElement('button');
-        btn.className = 'btn-geo glass';
-        btn.title = 'Lähin jätskiauto';
-        btn.textContent = '📍';
-        btn.addEventListener('click', () => {
-          if (!navigator.geolocation) {
-            alert('Sijainti ei ole käytössä tässä selaimessa.');
-            return;
-          }
-          btn.textContent = '⏳';
-          navigator.geolocation.getCurrentPosition(
-            pos => {
-              btn.textContent = '📍';
-              const { latitude: lat, longitude: lon } = pos.coords;
-
-              // Show user dot
-              L.circleMarker([lat, lon], {
-                radius: 8, color: '#7fffd4', fillColor: '#7fffd4',
-                fillOpacity: 0.6, weight: 2,
-                interactive: false,
-              }).addTo(map).bindTooltip('Sijaintisi', { direction: 'top' });
-
-              const { stop, marker, distKm } = findNearestStop(lat, lon);
-              if (!stop) {
-                alert('Ei aktiivisia reittejä tänään.');
-                return;
-              }
-              const walkMin = Math.round(distKm / 5 * 60);
-              map.setView([stop.lat, stop.lon], 15);
-              clusterGroup.zoomToShowLayer(marker, () => {
-                marker.openPopup();
-                map.panTo(marker.getLatLng());
-              });
-              // Brief walk-time tooltip on user dot
-              const sc = (stop.schedules || []).find(s => s.date === selectedISO);
-              if (sc) {
-                L.popup({ closeButton: false, autoClose: true, autoPan: false })
-                  .setLatLng([lat, lon])
-                  .setContent(`<span style="font-family:Nunito,sans-serif;font-size:12px">🚶 ${walkMin} min kävelyä<br>${stop.name} klo ${sc.time}</span>`)
-                  .openOn(map);
-              }
-            },
-            err => {
-              btn.textContent = '📍';
-              alert('Sijainnin haku epäonnistui: ' + err.message);
-            },
-            { timeout: 10000 }
-          );
-        });
-        L.DomEvent.disableClickPropagation(btn);
-        L.DomEvent.disableScrollPropagation(btn);
-        return btn;
-      }
-    }))({ position: 'bottomleft' }).addTo(map);
-
-    // ── Cluster group ──────────────────────────────────────────────────────
-    clusterGroup = makeCluster();
-    clusterGroup.addTo(map);
-
-    // ── Build route layers ─────────────────────────────────────────────────
-    allRoutes.forEach(route => {
-      const stops = route.stops;
-      if (!stops.length) return;
-
-      // Build polyline: use OSRM road geometry if available, else straight lines
-      const latlngs = buildRoutedLatlngs(stops);
-      const polyline  = L.polyline(latlngs, {
-        color: INACTIVE_COLOR, weight: 1.5, opacity: 0.35,
-      }).addTo(map);
-
-      attachHover(polyline, route);
-
-      const markers = stops.map(stop => {
-        const m = L.marker([stop.lat, stop.lon], {
-          icon: makeStopIcon(false, ''),
-          zIndexOffset: 100,
-        });
-        m._stop = stop;
-        m.bindPopup(stopPopup(stop, selectedISO), { maxWidth: 260 });
-        // Set URL hash when popup opens
-        m.on('popupopen', () => {
-          history.replaceState(null, '', '#stop=' + encodeURIComponent(stop.name) + '&zip=' + stop.zip);
-        });
-        m.on('popupclose', () => {
-          history.replaceState(null, '', location.pathname + location.search);
-        });
-        clusterGroup.addLayer(m);
-        return m;
+  // ── Live button (bottom-right) ────────────────────────────────────────────
+  new (L.Control.extend({
+    onAdd() {
+      liveBtn = document.createElement('button');
+      liveBtn.className = 'btn-live glass is-today';
+      liveBtn.innerHTML = `<span class="pulse-dot"></span> ${T[lang].liveBtn}`;
+      liveBtn.addEventListener('click', () => {
+        const t = isoToday(); dateInput.value = t; renderDate(t);
       });
+      L.DomEvent.disableClickPropagation(liveBtn);
+      L.DomEvent.disableScrollPropagation(liveBtn);
+      return liveBtn;
+    }
+  }))({ position: 'bottomright' }).addTo(map);
 
-      routeLayers.push({ polyline, markers, route });
+  // ── Geolocation button (bottom-left) ─────────────────────────────────────
+  new (L.Control.extend({
+    onAdd() {
+      const btn = document.createElement('button');
+      btn.className = 'btn-geo glass';
+      btn.title = lang === 'fi' ? 'Lähin jätskiauto' : 'Nearest ice cream truck';
+      btn.textContent = '📍';
+      btn.addEventListener('click', () => {
+        if (!navigator.geolocation) { alert(T[lang].noGeo); return; }
+        btn.textContent = '⏳';
+        navigator.geolocation.getCurrentPosition(
+          pos => {
+            btn.textContent = '📍';
+            const { latitude: lat, longitude: lon } = pos.coords;
+
+            // Show user dot
+            L.circleMarker([lat, lon], {
+              radius: 8, color: '#00e5ff', fillColor: '#00e5ff',
+              fillOpacity: 0.5, weight: 2, interactive: false,
+            }).addTo(map).bindTooltip(T[lang].yourLocation, { direction: 'top' }).openTooltip();
+
+            const { stop, marker, distKm } = findNearestStop(lat, lon);
+            if (!stop) { alert(T[lang].noActiveToday); return; }
+
+            const walkMin = Math.round(distKm / 5 * 60);
+            const sc = (stop.schedules || []).find(s => s.date === selectedISO);
+
+            clusterGroup.zoomToShowLayer(marker, () => {
+              map.setView(marker.getLatLng(), 15, { animate: true, duration: 1.0 });
+              setTimeout(() => marker.openPopup(), 500);
+            });
+
+            if (sc) {
+              setTimeout(() => {
+                L.popup({ closeButton: true, autoPan: false })
+                  .setLatLng([lat, lon])
+                  .setContent(`<span style="font-family:Nunito,sans-serif;font-size:12px;color:#f5eeff">🚶 ${walkMin} min<br><strong>${stop.name}</strong><br>${lang === 'fi' ? 'klo' : 'at'} ${sc.time}</span>`)
+                  .openOn(map);
+              }, 700);
+            }
+          },
+          err => { btn.textContent = '📍'; alert(T[lang].geoFailed(err.message)); },
+          { timeout: 10000, enableHighAccuracy: false }
+        );
+      });
+      L.DomEvent.disableClickPropagation(btn);
+      L.DomEvent.disableScrollPropagation(btn);
+      return btn;
+    }
+  }))({ position: 'bottomleft' }).addTo(map);
+
+  // ── Cluster group ─────────────────────────────────────────────────────────
+  clusterGroup = makeCluster();
+  clusterGroup.addTo(map);
+
+  // ── Build route layers ────────────────────────────────────────────────────
+  allRoutes.forEach(route => {
+    const stops = route.stops;
+    if (!stops.length) return;
+
+    const polyline = L.polyline(buildRoutedLatlngs(stops), {
+      color: INACTIVE_COLOR, weight: 1.5, opacity: 0.4,
+    }).addTo(map);
+    attachHover(polyline, route);
+
+    const markers = stops.map(stop => {
+      const m = L.marker([stop.lat, stop.lon], { icon: makeStopIcon(false, ''), zIndexOffset: 100 });
+      m._stop   = stop;
+      m._active = false;
+      m.bindPopup(stopPopup(stop, selectedISO), { maxWidth: 260 });
+      m.on('popupopen',  () => history.replaceState(null, '', '#stop=' + encodeURIComponent(stop.name) + '&zip=' + stop.zip));
+      m.on('popupclose', () => history.replaceState(null, '', location.pathname + location.search));
+      clusterGroup.addLayer(m);
+      return m;
     });
 
-    // Initial render for today
-    renderDate(isoToday());
-
-    // Restore stop from URL hash (after a short delay for clusters to settle)
-    setTimeout(openStopFromHash, 400);
-  })
-  .catch(err => {
-    console.error(err);
-    document.body.innerHTML =
-      `<div style="padding:3em;font-family:Nunito,sans-serif;text-align:center;color:#f0eef8;background:#2c2a3e;height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center">
-        <div style="font-size:48px">🍦</div>
-        <div style="font-size:22px;color:#ff6fb0;margin:12px 0">Reittitietojen lataus epäonnistui</div>
-        <div style="color:#888;font-size:14px">Käynnistä ensin paikallinen palvelin:<br>
-        <code style="background:rgba(255,255,255,.08);padding:4px 8px;border-radius:4px;font-size:13px">
-          python -m http.server 8000</code></div>
-        <div style="color:#ccc;font-size:12px;margin-top:12px">${err}</div>
-      </div>`;
+    routeLayers.push({ polyline, markers, route });
   });
+
+  // Initial render + hash restore
+  renderDate(isoToday());
+  setTimeout(openStopFromHash, 500);
+
+}).catch(err => {
+  console.error(err);
+  document.body.innerHTML = `
+    <div style="padding:3em;font-family:Nunito,sans-serif;text-align:center;color:#f5eeff;background:#0d0b1e;height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center">
+      <div style="font-size:48px">🍦</div>
+      <div style="font-size:22px;color:#ff2e97;margin:12px 0;font-family:Orbitron,sans-serif;letter-spacing:2px">DATA LOAD ERROR</div>
+      <div style="color:rgba(245,238,255,.55);font-size:14px">Deploy to Vercel, or run a local server:<br>
+        <code style="background:rgba(255,255,255,.07);padding:5px 10px;border-radius:6px;font-size:12px;margin-top:8px;display:inline-block">python -m http.server 8000</code>
+      </div>
+      <div style="color:rgba(245,238,255,.28);font-size:11px;margin-top:12px">${err}</div>
+    </div>`;
+});
 </script>
 </body>
 </html>
