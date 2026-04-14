@@ -270,7 +270,7 @@
       box-shadow: 0 0 0 4px rgba(255,230,0,0.28), 0 0 18px rgba(255,230,0,0.7);
       animation: now-pulse 1s ease-in-out infinite;
     }
-    .stop-dot.past { background: #c8a000; opacity: 0.55; box-shadow: none; }
+    .stop-dot.past { background: #c8a000; opacity: 0.8; box-shadow: none; }
     @keyframes soon-pulse {
       0%,100% { box-shadow: 0 0 0 4px rgba(255,133,200,.35), 0 0 18px rgba(255,133,200,.8); transform: scale(1); }
       50%      { box-shadow: 0 0 0 8px rgba(255,133,200,.15), 0 0 28px rgba(255,133,200,.5); transform: scale(1.2); }
@@ -363,9 +363,9 @@
     .truck-upcoming div span:last-child { color: var(--muted); white-space: nowrap; }
 
     /* ── Past visit (today) ── */
-    .popup-time-box.today-past { background: rgba(200,160,0,.05); border: 1px solid rgba(200,160,0,.2); }
-    .popup-time-box.today-past .tbox-label { color: rgba(200,160,0,.55); }
-    .popup-time-box.today-past .tbox-time  { color: rgba(200,160,0,.55); text-shadow: none; }
+    .popup-time-box.today-past { background: rgba(200,160,0,.1); border: 1px solid rgba(200,160,0,.35); }
+    .popup-time-box.today-past .tbox-label { color: rgba(200,160,0,.8); }
+    .popup-time-box.today-past .tbox-time  { color: rgba(200,160,0,.85); text-shadow: none; }
 
     /* ── Tooltip ── */
     .leaflet-tooltip {
@@ -454,16 +454,25 @@
     @media (max-width: 480px) {
       .ctrl-title    { min-width: 0; padding: 8px 10px; gap: 8px; }
       .ctrl-search   { min-width: 0; padding: 7px 9px; }
-      .ctrl-datepanel { min-width: 0; padding: 9px 10px; }
+      /* Force left column to max half the screen */
+      .leaflet-top.leaflet-left { max-width: 52vw; }
+      /* Pin right column to top-right corner reliably on mobile */
+      .leaflet-top.leaflet-right { position: fixed !important; top: 0; right: 0; max-width: 47vw; z-index: 999; }
+      /* Date panel on topright: compact */
+      .ctrl-datepanel { min-width: 0; padding: 8px 9px; }
       .title-text    { font-size: 12px; letter-spacing: 1px; }
       .btn-lang      { font-size: 9px; padding: 4px 8px; }
       .search-input  { font-size: 12px; padding: 5px 8px; }
       .search-btn    { width: 36px; height: 36px; }
       .search-results { max-height: 40vh; overflow-y: auto; }
       .ctrl-datepanel .panel-title { font-size: 8px; }
-      .ctrl-datepanel input[type="date"] { font-size: 12px; padding: 6px 8px; }
-      .route-list { max-height: 120px; }
-      /* Ensure all tappable buttons meet 44px touch target */
+      .ctrl-datepanel input[type="date"] { font-size: 12px; padding: 5px 7px; }
+      .ctrl-datepanel .route-count { font-size: 11px; margin-top: 5px; }
+      /* Route list taller — its own column */
+      .route-list { max-height: 40vh; }
+      .route-list-item { padding: 4px 7px; }
+      .rli-id  { font-size: 10px; }
+      .rli-zip { font-size: 9px; }
       .btn-live { min-height: 44px; }
       .leaflet-control-zoom { display: none; }
     }
@@ -489,14 +498,14 @@
       cursor: pointer; transition: background .15s; }
     .rp-stop:hover { background: rgba(255,46,151,.07); }
     .rp-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; background: var(--active); }
-    .rp-dot.past { background: rgba(200,160,0,.6); }
+    .rp-dot.past { background: rgba(200,160,0,.85); }
     .rp-dot.now  { background: #ffe600; box-shadow: 0 0 6px #ffe600; animation: now-pulse .9s infinite; }
     .rp-dot.none { background: rgba(255,255,255,.15); }
     .rp-stop-name { flex: 1; font-size: 12px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .rp-stop-name.past { color: rgba(245,238,255,.35); }
     .rp-stop-name.none { color: rgba(245,238,255,.25); }
     .rp-stop-time { font-size: 12px; color: var(--active); font-weight: 600; flex-shrink: 0; }
-    .rp-stop-time.past { color: rgba(200,160,0,.5); }
+    .rp-stop-time.past { color: rgba(200,160,0,.8); }
     .rp-stop-time.none { visibility: hidden; }
     @media (max-width: 600px) {
       #route-panel { top: auto; bottom: -70vh; right: 0; width: 100%; height: 70vh;
@@ -1055,7 +1064,7 @@ function renderDate(iso) {
               const splitIdx = findClosestIndex(all, stops[passedStopIdx]);
               polyline.setLatLngs(all.slice(splitIdx));
               passedPolyline.setLatLngs(all.slice(0, splitIdx + 1));
-              passedPolyline.setStyle({ color: PASSED_COLOR, opacity: 0.5, weight: 2 });
+              passedPolyline.setStyle({ color: PASSED_COLOR, opacity: 0.7, weight: 2 });
               polyline.redraw(); passedPolyline.redraw();
             } else {
               polyline.setLatLngs(rm.fullCoords);
@@ -1364,7 +1373,7 @@ Promise.all([dataPromise, metaPromise]).then(([data, meta]) => {
       L.DomEvent.disableScrollPropagation(wrap);
       return wrap;
     }
-  }))({ position: 'topleft' }).addTo(map);
+  }))({ position: 'topright' }).addTo(map);
 
   // ── Live button (bottom-right) ────────────────────────────────────────────
   new (L.Control.extend({
