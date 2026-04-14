@@ -44,6 +44,8 @@
     html, body, #map { width: 100%; height: 100%; background: var(--bg); font-family: var(--font); }
 
     /* ── Leaflet ── */
+    .leaflet-interactive:focus { outline: none; }
+    .leaflet-container path { outline: none; }
     .leaflet-control-attribution {
       background: rgba(13,7,45,0.7) !important;
       color: rgba(245,238,255,0.3) !important;
@@ -222,11 +224,12 @@
 
     /* ── Geolocation button ── */
     .btn-geo {
-      width: 42px; height: 42px; border-radius: 50%;
+      width: 34px; height: 34px; border-radius: 8px; flex-shrink: 0;
       display: flex; align-items: center; justify-content: center;
-      font-size: 18px; cursor: pointer;
+      font-size: 16px; cursor: pointer;
       border: 1px solid rgba(0,229,255,0.35);
       transition: background .18s, transform .14s, box-shadow .18s;
+      background: none; padding: 0;
     }
     .btn-geo:hover {
       background: rgba(0,229,255,0.12) !important; transform: scale(1.12);
@@ -456,8 +459,46 @@
       .ctrl-datepanel input[type="date"] { font-size: 12px; padding: 6px 8px; }
       .route-list { max-height: 120px; }
       /* Ensure all tappable buttons meet 44px touch target */
-      .btn-live, .btn-geo { min-height: 44px; }
+      .btn-live { min-height: 44px; }
       .leaflet-control-zoom { display: none; }
+    }
+
+    /* ── Route panel ── */
+    #route-panel {
+      position: fixed; top: 0; right: -320px; width: 300px; height: 100%;
+      background: var(--panel); backdrop-filter: blur(18px);
+      border-left: 1px solid rgba(255,46,151,.18);
+      z-index: 1100; transition: right .3s ease;
+      display: flex; flex-direction: column; font-family: var(--font);
+      padding: env(safe-area-inset-top, 12px) 0 env(safe-area-inset-bottom, 0);
+    }
+    #route-panel.open { right: 0; }
+    .rp-header { padding: 18px 16px 12px; border-bottom: 1px solid rgba(255,255,255,.07); }
+    .rp-title { font-family: var(--font-head); font-size: 13px; letter-spacing: 1px; color: var(--active); }
+    .rp-sub { font-size: 11px; color: var(--muted); margin-top: 3px; }
+    .rp-close { position: absolute; top: 14px; right: 14px; background: none; border: none;
+      color: var(--muted); font-size: 20px; cursor: pointer; padding: 4px 8px; line-height: 1; }
+    .rp-close:hover { color: var(--active); }
+    .rp-stops { flex: 1; overflow-y: auto; padding: 8px 0; }
+    .rp-stop { display: flex; align-items: center; gap: 10px; padding: 8px 16px;
+      cursor: pointer; transition: background .15s; }
+    .rp-stop:hover { background: rgba(255,46,151,.07); }
+    .rp-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; background: var(--active); }
+    .rp-dot.past { background: rgba(255,46,151,.25); }
+    .rp-dot.now  { background: #ffe600; box-shadow: 0 0 6px #ffe600; animation: now-pulse .9s infinite; }
+    .rp-dot.none { background: rgba(255,255,255,.15); }
+    .rp-stop-name { flex: 1; font-size: 12px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .rp-stop-name.past { color: rgba(245,238,255,.35); }
+    .rp-stop-name.none { color: rgba(245,238,255,.25); }
+    .rp-stop-time { font-size: 12px; color: var(--active); font-weight: 600; flex-shrink: 0; }
+    .rp-stop-time.past { color: rgba(255,46,151,.35); }
+    .rp-stop-time.none { visibility: hidden; }
+    @media (max-width: 600px) {
+      #route-panel { top: auto; bottom: -70vh; right: 0; width: 100%; height: 70vh;
+        border-left: none; border-top: 1px solid rgba(255,46,151,.18);
+        transition: bottom .3s ease; border-radius: 16px 16px 0 0; }
+      #route-panel.open { bottom: 0; right: 0; }
+      .rp-close { top: 10px; right: 12px; }
     }
   </style>
 </head>
@@ -523,7 +564,8 @@ const T = {
 
 // ── Map init ─────────────────────────────────────────────────────────────────
 
-const map = L.map('map', { zoomControl: true }).setView([60.25, 24.90], 11);
+const map = L.map('map', { zoomControl: false }).setView([60.25, 24.90], 11);
+L.control.zoom({ position: 'bottomleft' }).addTo(map);
 map.createPane('tiles');
 map.getPane('tiles').style.zIndex = 200;  // below overlayPane (400) so polylines render on top
 map.getPane('tiles').style.filter = 'brightness(0.58) saturate(0.55) hue-rotate(255deg) sepia(0.08)';
@@ -607,7 +649,6 @@ function stopPopup(stop, selectedISO) {
     });
     html += `</div>`;
   }
-  if (stop.phone) html += `<div class="popup-phone">📞 ${stop.phone}</div>`;
   html += `<button class="popup-copy-btn" onclick="copyStopLink('${hashVal}')">${T[lang].copyLink}</button>`;
   html += `</div></div>`;
   return html;
@@ -641,7 +682,31 @@ function buildRoutedLatlngs(stops) {
 
 // ── Truck position ────────────────────────────────────────────────────────────
 
-function getTruckPosition(stops, stopTimesMin, t) {
+function interpolateAlongPath(path, fraction) {
+  if (!path || path.length < 2) return null;
+  let total = 0;
+  const dists = [0];
+  for (let i = 1; i < path.length; i++) {
+    const dlat = path[i][0] - path[i-1][0];
+    const dlon = path[i][1] - path[i-1][1];
+    total += Math.sqrt(dlat*dlat + dlon*dlon);
+    dists.push(total);
+  }
+  if (total === 0) return { lat: path[0][0], lon: path[0][1] };
+  const target = Math.max(0, Math.min(1, fraction)) * total;
+  for (let i = 1; i < dists.length; i++) {
+    if (dists[i] >= target) {
+      const segFrac = (target - dists[i-1]) / (dists[i] - dists[i-1]);
+      return {
+        lat: path[i-1][0] + segFrac * (path[i][0] - path[i-1][0]),
+        lon: path[i-1][1] + segFrac * (path[i][1] - path[i-1][1]),
+      };
+    }
+  }
+  return { lat: path[path.length-1][0], lon: path[path.length-1][1] };
+}
+
+function getTruckPosition(stops, stopTimesMin, t, routeId) {
   if (!stopTimesMin.length) return null;
   const first = stopTimesMin[0], last = stopTimesMin[stopTimesMin.length-1];
   if (t < first - APPEAR_MIN || t > last + VANISH_MIN) return null;
@@ -657,6 +722,9 @@ function getTruckPosition(stops, stopTimesMin, t) {
           return t >= next - APPEAR_MIN ? { lat: stops[i+1].lat, lon: stops[i+1].lon } : null;
         }
         const p = (t - depart) / (next - depart);
+        const legs = routeId ? cachedGeom.get(routeId) : null;
+        const leg = legs ? legs[i] : null;
+        if (leg && leg.length >= 2) return interpolateAlongPath(leg, p);
         return {
           lat: stops[i].lat + p * (stops[i+1].lat - stops[i].lat),
           lon: stops[i].lon + p * (stops[i+1].lon - stops[i].lon),
@@ -694,57 +762,60 @@ function buildGappedLatlngs(stops, perStopTimes) {
   return segments.length ? segments : [stops.map(s => [s.lat, s.lon])];
 }
 
-function applyGeometry(geom, iso) {
-  if (!geom) return;
+function applyGeometry(iso) {
   const activeIdx = dateIndex.get(iso) || new Set();
   routeLayers.forEach(({ polyline, route }, idx) => {
     if (!activeIdx.has(idx)) return;
-    const path = geom[route.route_id];
-    if (!Array.isArray(path) || path.length < 2) return;
+    const legs = cachedGeom.get(route.route_id);
+    if (!legs) return;
     const stops = route.stops;
     const perStopTimes = stops.map(s => {
       const sc = (s.schedules || []).find(sc => sc.date === iso);
       return sc ? toMin(sc.time) : null;
     });
 
-    // Identify gap positions (index i means gap between stop i-1 and stop i)
-    const gapBefore = stops.map((_, i) => {
-      if (i === 0) return false;
-      const t1 = perStopTimes[i - 1], t2 = perStopTimes[i];
-      return t1 != null && t2 != null && (t2 - t1) > GAP_MIN;
-    });
-    const hasGap = gapBefore.some(Boolean);
-
-    if (!hasGap) {
-      // No gaps — apply the full OSRM path directly
-      polyline.setLatLngs(path);
-      polyline.redraw();
-      if (iso === isoToday()) {
-        const rm = activeRouteMeta.find(r => r.route.route_id === route.route_id);
-        if (rm) rm.fullCoords = path;
-      }
-      return;
-    }
-
-    // Has gaps — split the OSRM path at each gap boundary into separate segments
-    const stopSegments = [];
-    let seg = [stops[0]];
-    for (let i = 1; i < stops.length; i++) {
-      if (gapBefore[i]) { stopSegments.push(seg); seg = [stops[i]]; }
-      else seg.push(stops[i]);
-    }
-    stopSegments.push(seg);
-
+    // Stitch legs into segments, breaking at gaps
     const segments = [];
-    for (const stopSeg of stopSegments) {
-      if (stopSeg.length < 2) continue;
-      const startIdx = findClosestIndex(path, stopSeg[0]);
-      const endIdx   = findClosestIndex(path, stopSeg[stopSeg.length - 1]);
-      if (endIdx > startIdx) segments.push(path.slice(startIdx, endIdx + 1));
+    let seg = [];
+    for (let i = 0; i < legs.length; i++) {
+      const legPts = legs[i] || [[stops[i].lat, stops[i].lon], [stops[i+1].lat, stops[i+1].lon]];
+      if (seg.length === 0) seg.push(...legPts);
+      else seg.push(...legPts.slice(1));  // skip duplicate join point
+      const t1 = perStopTimes[i], t2 = perStopTimes[i + 1];
+      if (t1 != null && t2 != null && (t2 - t1) > GAP_MIN) {
+        if (seg.length >= 2) segments.push(seg);
+        seg = [];
+      }
     }
+    if (seg.length >= 2) segments.push(seg);
+    if (!segments.length) return;
 
-    if (segments.length) { polyline.setLatLngs(segments); polyline.redraw(); }
+    polyline.setLatLngs(segments.length === 1 ? segments[0] : segments);
+    polyline.redraw();
+
+    if (iso === isoToday()) {
+      const rm = activeRouteMeta.find(r => r.route.route_id === route.route_id);
+      if (rm) rm.fullCoords = segments[0];  // first segment for split logic
+    }
   });
+}
+
+function loadGeometryForDate(iso) {
+  const activeIdx = dateIndex.get(iso) || new Set();
+  const toFetch = [];
+  routeLayers.forEach(({ route }, idx) => {
+    if (activeIdx.has(idx) && !cachedGeom.has(route.route_id))
+      toFetch.push(route.route_id);
+  });
+  if (!toFetch.length) { applyGeometry(iso); return; }
+  Promise.all(
+    toFetch.map(rid =>
+      fetch(`./geometry/${rid}.json`)
+        .then(r => r.ok ? r.json() : null)
+        .then(legs => { if (Array.isArray(legs)) cachedGeom.set(rid, legs); })
+        .catch(() => {})
+    )
+  ).then(() => applyGeometry(iso));
 }
 
 // ── Icon makers ───────────────────────────────────────────────────────────────
@@ -771,7 +842,7 @@ let animTimer    = null;
 let clusterGroup;
 let dateIndex = new Map();       // date → Set<routeLayerIndex>, populated on data load
 let activeRouteMeta = [];        // live-mode per-route state (fullCoords, timesMin, etc.)
-let cachedGeom = null;           // OSRM geometry cache, keyed by route_id
+let cachedGeom = new Map();      // OSRM geometry cache: route_id → legs array
 let revealTimers = [];
 
 // DOM refs (set after controls are created)
@@ -811,6 +882,7 @@ function clearRevealTimers() {
 
 function renderDate(iso) {
   selectedISO = iso;
+  closeRoutePanel();
   const todayISO = isoToday();
   const isLive   = iso === todayISO;
   const t        = isLive ? nowMin() : -1;
@@ -848,8 +920,8 @@ function renderDate(iso) {
     revealTimers.push(tid);
   });
 
-  // Apply cached OSRM road geometry if available (overwrites straight lines)
-  if (cachedGeom) applyGeometry(cachedGeom, iso);
+  // Load and apply OSRM road geometry (fetches missing files, then applies)
+  loadGeometryForDate(iso);
 
   // Refresh cluster icons after animations settle
   const refreshId = setTimeout(
@@ -876,6 +948,7 @@ function renderDate(iso) {
       item.innerHTML = `<span class="rli-id">${label}</span>${zip ? `<span class="rli-zip">${zip}</span>` : ''}`;
       item.addEventListener('click', () => {
         try { map.fitBounds(polyline.getBounds(), { padding: [50, 50], animate: true, duration: 0.8 }); } catch(e) {}
+        openRoutePanel(route, iso);
       });
       routeListEl.appendChild(item);
     });
@@ -908,7 +981,7 @@ function renderDate(iso) {
       const now = nowMin();
       activeRouteMeta.forEach(rm => {
       const { polyline, passedPolyline, route, stops, timesMin } = rm;
-        const pos = getTruckPosition(stops, timesMin, now);
+        const pos = getTruckPosition(stops, timesMin, now, route.route_id);
         const rid = route.route_id;
         if (pos) {
           if (!truckMarkers[rid]) {
@@ -1014,6 +1087,61 @@ function attachHover(polyline, route) {
     polyline.setStyle({ weight: isActive ? 3 : 1.5, opacity: isActive ? 0.7 : 0 });
     polyline.closeTooltip();
   });
+  polyline.on('click', e => {
+    L.DomEvent.stopPropagation(e);
+    const isActive = route.stops.some(s => (s.schedules || []).some(sc => sc.date === selectedISO));
+    if (!isActive) return;
+    openRoutePanel(route, selectedISO);
+  });
+}
+
+// ── Route panel ──────────────────────────────────────────────────────────────
+
+let routePanelEl = null;
+
+function openRoutePanel(route, iso) {
+  if (!routePanelEl) routePanelEl = document.getElementById('route-panel');
+  const now = isoToday() === iso ? nowMin() : -1;
+  const day = route.weekday ? route.weekday.charAt(0).toUpperCase() + route.weekday.slice(1) : '?';
+
+  routePanelEl.querySelector('.rp-title').textContent = route.route_id || route.route_name;
+  const phone = route.stops.find(s => s.phone)?.phone?.trim();
+  const phoneHtml = phone ? ` · <a href="tel:${phone}" style="color:var(--cyan);text-decoration:none">📞 ${phone}</a>` : '';
+  routePanelEl.querySelector('.rp-sub').innerHTML = `${day} · ${T[lang].stops(route.stops.length)}${phoneHtml}`;
+
+  const list = routePanelEl.querySelector('.rp-stops');
+  list.innerHTML = '';
+  route.stops.forEach((stop, i) => {
+    const sc = (stop.schedules || []).find(s => s.date === iso);
+    const t = sc ? toMin(sc.time) : null;
+    let state = 'none';
+    if (t !== null) {
+      if (now >= t && now <= t + DWELL_MIN) state = 'now';
+      else if (now > t + DWELL_MIN) state = 'past';
+      else state = 'upcoming';
+    }
+    const dimmed = state === 'none' || state === 'past';
+    const row = document.createElement('div');
+    row.className = 'rp-stop';
+    row.innerHTML = `
+      <div class="rp-dot ${state === 'upcoming' ? '' : state}"></div>
+      <div class="rp-stop-name${dimmed ? ' ' + state : ''}">${stop.name}</div>
+      <div class="rp-stop-time${dimmed ? ' ' + state : ''}">${sc ? sc.time : '–'}</div>`;
+    row.addEventListener('click', () => {
+      const layer = routeLayers.find(rl => rl.route === route);
+      if (layer) {
+        const m = layer.markers[i];
+        clusterGroup.zoomToShowLayer(m, () => { map.panTo(m.getLatLng()); setTimeout(() => m.openPopup(), 300); });
+      }
+    });
+    list.appendChild(row);
+  });
+
+  routePanelEl.classList.add('open');
+}
+
+function closeRoutePanel() {
+  if (routePanelEl) routePanelEl.classList.remove('open');
 }
 
 // ── Geolocation ───────────────────────────────────────────────────────────────
@@ -1095,7 +1223,7 @@ async function doSearch(query) {
     });
   } catch(e) { console.error('Nominatim error', e); }
 }
-map.on('click', () => { if (searchResultsEl) searchResultsEl.innerHTML = ''; });
+map.on('click', () => { if (searchResultsEl) searchResultsEl.innerHTML = ''; closeRoutePanel(); });
 
 // ── Main ─────────────────────────────────────────────────────────────────────
 
@@ -1141,6 +1269,7 @@ Promise.all([dataPromise, metaPromise]).then(([data, meta]) => {
           <input class="search-input" id="search-input" type="text"
             placeholder="${T[lang].searchPH}" autocomplete="off" />
           <button class="search-btn" id="search-btn">🔍</button>
+          <button class="btn-geo glass" id="geo-btn" title="${lang === 'fi' ? 'Lähin jätskiauto' : 'Nearest ice cream truck'}">📍</button>
         </div>
         <div class="search-results" id="search-results"></div>`;
       L.DomEvent.disableClickPropagation(wrap);
@@ -1150,8 +1279,50 @@ Promise.all([dataPromise, metaPromise]).then(([data, meta]) => {
   }))({ position: 'topleft' }).addTo(map);
   searchInputEl   = document.getElementById('search-input');
   searchResultsEl = document.getElementById('search-results');
-  searchInputEl.addEventListener('keydown', e => { if (e.key === 'Enter') doSearch(searchInputEl.value); });
+  let searchDebounce = null;
+  searchInputEl.addEventListener('keydown', e => { if (e.key === 'Enter') { clearTimeout(searchDebounce); doSearch(searchInputEl.value); } });
+  searchInputEl.addEventListener('input', () => {
+    clearTimeout(searchDebounce);
+    if (!searchInputEl.value.trim()) { searchResultsEl.innerHTML = ''; return; }
+    searchDebounce = setTimeout(() => doSearch(searchInputEl.value), 350);
+  });
   document.getElementById('search-btn').addEventListener('click', () => doSearch(searchInputEl.value));
+  document.getElementById('rp-close-btn').addEventListener('click', closeRoutePanel);
+
+  // ── Geolocation (inline in search bar) ───────────────────────────────────
+  const geoBtn = document.getElementById('geo-btn');
+  geoBtn.addEventListener('click', () => {
+    if (!navigator.geolocation) { alert(T[lang].noGeo); return; }
+    geoBtn.textContent = '⏳';
+    navigator.geolocation.getCurrentPosition(
+      pos => {
+        geoBtn.textContent = '📍';
+        const { latitude: lat, longitude: lon } = pos.coords;
+        L.circleMarker([lat, lon], {
+          radius: 8, color: '#00e5ff', fillColor: '#00e5ff',
+          fillOpacity: 0.5, weight: 2, interactive: false,
+        }).addTo(map).bindTooltip(T[lang].yourLocation, { direction: 'top' }).openTooltip();
+        const { stop, marker, distKm } = findNearestStop(lat, lon);
+        if (!stop) { alert(T[lang].noActiveToday); return; }
+        const walkMin = Math.round(distKm / 5 * 60);
+        const sc = (stop.schedules || []).find(s => s.date === selectedISO);
+        clusterGroup.zoomToShowLayer(marker, () => {
+          map.setView(marker.getLatLng(), 15, { animate: true, duration: 1.0 });
+          setTimeout(() => marker.openPopup(), 500);
+        });
+        if (sc) {
+          setTimeout(() => {
+            L.popup({ closeButton: true, autoPan: false })
+              .setLatLng([lat, lon])
+              .setContent(`<span style="font-family:Nunito,sans-serif;font-size:12px;color:#f5eeff">🚶 ${walkMin} min<br><strong>${stop.name}</strong><br>${lang === 'fi' ? 'klo' : 'at'} ${sc.time}</span>`)
+              .openOn(map);
+          }, 700);
+        }
+      },
+      err => { geoBtn.textContent = '📍'; alert(T[lang].geoFailed(err.code)); },
+      { timeout: 15000, enableHighAccuracy: true }
+    );
+  });
 
   // ── Date panel (top-right) ────────────────────────────────────────────────
   new (L.Control.extend({
@@ -1182,7 +1353,7 @@ Promise.all([dataPromise, metaPromise]).then(([data, meta]) => {
       L.DomEvent.disableScrollPropagation(wrap);
       return wrap;
     }
-  }))({ position: 'topright' }).addTo(map);
+  }))({ position: 'topleft' }).addTo(map);
 
   // ── Live button (bottom-right) ────────────────────────────────────────────
   new (L.Control.extend({
@@ -1197,58 +1368,8 @@ Promise.all([dataPromise, metaPromise]).then(([data, meta]) => {
       L.DomEvent.disableScrollPropagation(liveBtn);
       return liveBtn;
     }
-  }))({ position: 'bottomright' }).addTo(map);
-
-  // ── Geolocation button (bottom-left) ─────────────────────────────────────
-  new (L.Control.extend({
-    onAdd() {
-      const btn = document.createElement('button');
-      btn.className = 'btn-geo glass';
-      btn.title = lang === 'fi' ? 'Lähin jätskiauto' : 'Nearest ice cream truck';
-      btn.textContent = '📍';
-      btn.addEventListener('click', () => {
-        if (!navigator.geolocation) { alert(T[lang].noGeo); return; }
-        btn.textContent = '⏳';
-        navigator.geolocation.getCurrentPosition(
-          pos => {
-            btn.textContent = '📍';
-            const { latitude: lat, longitude: lon } = pos.coords;
-
-            // Show user dot
-            L.circleMarker([lat, lon], {
-              radius: 8, color: '#00e5ff', fillColor: '#00e5ff',
-              fillOpacity: 0.5, weight: 2, interactive: false,
-            }).addTo(map).bindTooltip(T[lang].yourLocation, { direction: 'top' }).openTooltip();
-
-            const { stop, marker, distKm } = findNearestStop(lat, lon);
-            if (!stop) { alert(T[lang].noActiveToday); return; }
-
-            const walkMin = Math.round(distKm / 5 * 60);
-            const sc = (stop.schedules || []).find(s => s.date === selectedISO);
-
-            clusterGroup.zoomToShowLayer(marker, () => {
-              map.setView(marker.getLatLng(), 15, { animate: true, duration: 1.0 });
-              setTimeout(() => marker.openPopup(), 500);
-            });
-
-            if (sc) {
-              setTimeout(() => {
-                L.popup({ closeButton: true, autoPan: false })
-                  .setLatLng([lat, lon])
-                  .setContent(`<span style="font-family:Nunito,sans-serif;font-size:12px;color:#f5eeff">🚶 ${walkMin} min<br><strong>${stop.name}</strong><br>${lang === 'fi' ? 'klo' : 'at'} ${sc.time}</span>`)
-                  .openOn(map);
-              }, 700);
-            }
-          },
-          err => { btn.textContent = '📍'; alert(T[lang].geoFailed(err.code)); },
-          { timeout: 15000, enableHighAccuracy: true }
-        );
-      });
-      L.DomEvent.disableClickPropagation(btn);
-      L.DomEvent.disableScrollPropagation(btn);
-      return btn;
-    }
   }))({ position: 'bottomleft' }).addTo(map);
+
 
   // ── Cluster group ─────────────────────────────────────────────────────────
   clusterGroup = makeCluster();
@@ -1310,14 +1431,6 @@ Promise.all([dataPromise, metaPromise]).then(([data, meta]) => {
   renderDate(isoToday());
   setTimeout(openStopFromHash, 500);
 
-  // ── Lazy-load OSRM geometry in the background (non-blocking) ────────────────
-  fetch('./metro_routes_geometry.json')
-    .then(r => { if (!r.ok) throw new Error('no geometry file'); return r.json(); })
-    .then(geom => {
-      cachedGeom = geom;
-      applyGeometry(geom, selectedISO);
-    })
-    .catch(() => { /* geometry file absent or failed — keep straight lines */ });
 
 }).catch(err => {
   console.error(err);
@@ -1333,5 +1446,13 @@ Promise.all([dataPromise, metaPromise]).then(([data, meta]) => {
 });
 </script>
 <script defer src="/_vercel/insights/script.js"></script>
+<div id="route-panel">
+  <div class="rp-header">
+    <div class="rp-title"></div>
+    <div class="rp-sub"></div>
+  </div>
+  <div class="rp-stops"></div>
+  <button class="rp-close" id="rp-close-btn">×</button>
+</div>
 </body>
 </html>
