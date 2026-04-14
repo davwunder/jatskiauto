@@ -261,8 +261,8 @@
     }
     .stop-dot.soon {
       background: #ff85c8;
-      box-shadow: 0 0 0 3px rgba(255,133,200,0.28), 0 0 14px rgba(255,133,200,0.7);
-      animation: soon-pulse 2s ease-in-out infinite;
+      box-shadow: 0 0 0 4px rgba(255,133,200,0.35), 0 0 18px rgba(255,133,200,0.8);
+      animation: soon-pulse 1s ease-in-out infinite;
     }
     .stop-dot.now {
       background: var(--gold);
@@ -271,8 +271,8 @@
     }
     .stop-dot.past { background: #ff2e97; opacity: 0.22; box-shadow: none; }
     @keyframes soon-pulse {
-      0%,100% { box-shadow: 0 0 0 3px rgba(255,133,200,.28), 0 0 14px rgba(255,133,200,.7); }
-      50%      { box-shadow: 0 0 0 6px rgba(255,133,200,.12), 0 0 22px rgba(255,133,200,.45); }
+      0%,100% { box-shadow: 0 0 0 4px rgba(255,133,200,.35), 0 0 18px rgba(255,133,200,.8); transform: scale(1); }
+      50%      { box-shadow: 0 0 0 8px rgba(255,133,200,.15), 0 0 28px rgba(255,133,200,.5); transform: scale(1.2); }
     }
     @keyframes now-pulse {
       0%,100% { box-shadow: 0 0 0 4px rgba(255,230,0,.28), 0 0 18px rgba(255,230,0,.7); transform: scale(1); }
@@ -503,6 +503,7 @@
         transition: bottom .3s ease; border-radius: 16px 16px 0 0; }
       #route-panel.open { bottom: 0; right: 0; }
       .rp-close { top: 10px; right: 12px; }
+      .leaflet-popup-content-wrapper { max-height: 55vh; overflow-y: auto; }
     }
   </style>
 </head>
@@ -518,6 +519,7 @@
 
 const ACTIVE_COLOR   = '#ff2e97';
 const INACTIVE_COLOR = '#1e5ab4';
+const PASSED_COLOR   = '#888888';
 
 const DWELL_MIN  = 3;
 const APPEAR_MIN = 5;
@@ -573,7 +575,7 @@ L.control.zoom({ position: 'bottomleft' }).addTo(map);
 map.attributionControl.addAttribution('<a href="https://vercel.com/legal/privacy-policy" target="_blank" rel="noopener">Analytics privacy</a>');
 map.createPane('tiles');
 map.getPane('tiles').style.zIndex = 200;  // below overlayPane (400) so polylines render on top
-map.getPane('tiles').style.filter = 'brightness(0.58) saturate(0.55) hue-rotate(255deg) sepia(0.08)';
+map.getPane('tiles').style.filter = 'brightness(0.72) saturate(0.75) hue-rotate(255deg) sepia(0.05)';
 L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
   attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
   subdomains: 'abcd', maxZoom: 19, pane: 'tiles',
@@ -769,7 +771,7 @@ function buildGappedLatlngs(stops, perStopTimes) {
 
 function applyGeometry(iso) {
   const activeIdx = dateIndex.get(iso) || new Set();
-  routeLayers.forEach(({ polyline, route }, idx) => {
+  routeLayers.forEach(({ polyline, hitPolyline, route }, idx) => {
     if (!activeIdx.has(idx)) return;
     const legs = cachedGeom.get(route.route_id);
     if (!legs) return;
@@ -795,7 +797,9 @@ function applyGeometry(iso) {
     if (seg.length >= 2) segments.push(seg);
     if (!segments.length) return;
 
-    polyline.setLatLngs(segments.length === 1 ? segments[0] : segments);
+    const latlngs = segments.length === 1 ? segments[0] : segments;
+    polyline.setLatLngs(latlngs);
+    if (hitPolyline) { hitPolyline.setLatLngs(latlngs); hitPolyline.redraw(); }
     polyline.redraw();
 
     if (iso === isoToday()) {
@@ -829,7 +833,8 @@ function makeStopIcon(active, timeState) {
   let cls = 'stop-dot';
   if (!active) cls += ' inactive';
   else if (timeState) cls += ' ' + timeState;
-  return L.divIcon({ html: `<div class="${cls}"></div>`, className: '', iconSize: [12,12], iconAnchor: [6,6] });
+  const sz = timeState === 'soon' ? 16 : 12;
+  return L.divIcon({ html: `<div class="${cls}"></div>`, className: '', iconSize: [sz,sz], iconAnchor: [sz/2,sz/2] });
 }
 function makeTruckIcon() {
   return L.divIcon({ html: '<div class="truck-marker">🍦</div>', className: '', iconSize: [38,38], iconAnchor: [19,19] });
@@ -1049,7 +1054,7 @@ function renderDate(iso) {
               const splitIdx = findClosestIndex(all, stops[passedStopIdx]);
               polyline.setLatLngs(all.slice(splitIdx));
               passedPolyline.setLatLngs(all.slice(0, splitIdx + 1));
-              passedPolyline.setStyle({ opacity: 0.22, weight: 2 });
+              passedPolyline.setStyle({ color: PASSED_COLOR, opacity: 0.5, weight: 2 });
               polyline.redraw(); passedPolyline.redraw();
             } else {
               polyline.setLatLngs(rm.fullCoords);
@@ -1391,7 +1396,16 @@ Promise.all([dataPromise, metaPromise]).then(([data, meta]) => {
     const polyline = L.polyline(buildRoutedLatlngs(stops), {
       color: INACTIVE_COLOR, weight: 1.5, opacity: 0,
     }).addTo(map);
+    const hitPolyline = L.polyline(buildRoutedLatlngs(stops), {
+      weight: 20, opacity: 0, interactive: true,
+    }).addTo(map);
     attachHover(polyline, route);
+    hitPolyline.on('click', e => {
+      L.DomEvent.stopPropagation(e);
+      const isActive = route.stops.some(s => (s.schedules || []).some(sc => sc.date === selectedISO));
+      if (!isActive) return;
+      openRoutePanel(route, selectedISO);
+    });
 
     const markers = stops.map(stop => {
       const m = L.marker([stop.lat, stop.lon], { icon: makeStopIcon(false, ''), zIndexOffset: 100 });
@@ -1414,9 +1428,9 @@ Promise.all([dataPromise, metaPromise]).then(([data, meta]) => {
     });
 
     const passedPolyline = L.polyline([], {
-      color: ACTIVE_COLOR, weight: 2, opacity: 0, interactive: false,
+      color: PASSED_COLOR, weight: 2, opacity: 0, interactive: false,
     }).addTo(map);
-    routeLayers.push({ polyline, passedPolyline, markers, route });
+    routeLayers.push({ polyline, hitPolyline, passedPolyline, markers, route });
   });
 
   // Batch-add all markers at once (much faster than 6k individual addLayer calls)
