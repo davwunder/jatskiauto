@@ -31,8 +31,8 @@ import requests
 # ── Configuration ─────────────────────────────────────────────────────────────
 
 API_BASE  = "https://api.paikannuspalvelu.fi"
-DATA_KEY  = "eVCPeXjwNNYMfGZ6sGwzLcFB462FTfgJ5TqAX7nf"
-AUTHOR    = "rest@paikannuspalvelu.fi"
+DATA_KEY  = "eVCPeXjwNNYMfGZ6sGwzLcFB462FTfgJ5TqAX7nf"  # public API key from paikannuspalvelu.fi docs
+AUTHOR    = "rest@paikannuspalvelu.fi"                    # public API contact from paikannuspalvelu.fi
 PARAMS    = f"data_key={DATA_KEY}&author={AUTHOR}&format=geojson"
 
 # Full Helsinki metro area zip prefixes

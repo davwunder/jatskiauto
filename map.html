@@ -3,11 +3,15 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Jätskiauto Helsinki Metro</title>
+  <title>Jätskiauto Helsinki Metro 🍦</title>
+  <meta name="description" content="Interaktiivinen kartta Helsingin seudun jätskiautojen reiteistä ja aikatauluista. Helsinki, Espoo ja Vantaa — live-seuranta, aikataulut ja lähimmän auton haku." />
+  <link rel="canonical" href="https://jatskiauto.live" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🍦</text></svg>" />
   <!-- Open Graph (social sharing preview) -->
   <meta property="og:title"       content="Jätskiauto Helsinki Metro 🍦" />
-  <meta property="og:description" content="Interactive map of ice cream truck routes across Helsinki, Espoo and Vantaa. 152 routes, live truck tracking." />
+  <meta property="og:description" content="Interaktiivinen kartta Helsingin seudun jätskiautojen reiteistä — live-seuranta, aikataulut, lähimmän auton haku." />
   <meta property="og:type"        content="website" />
+  <meta property="og:url"         content="https://jatskiauto.live" />
   <meta name="twitter:card"       content="summary" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -566,6 +570,7 @@ const T = {
 
 const map = L.map('map', { zoomControl: false }).setView([60.25, 24.90], 11);
 L.control.zoom({ position: 'bottomleft' }).addTo(map);
+map.attributionControl.addAttribution('<a href="https://vercel.com/legal/privacy-policy" target="_blank" rel="noopener">Analytics privacy</a>');
 map.createPane('tiles');
 map.getPane('tiles').style.zIndex = 200;  // below overlayPane (400) so polylines render on top
 map.getPane('tiles').style.filter = 'brightness(0.58) saturate(0.55) hue-rotate(255deg) sepia(0.08)';

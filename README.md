@@ -2,11 +2,11 @@
 
 Interactive map of ice cream truck routes across the Helsinki metro area — Helsinki, Vantaa, Espoo and Kauniainen. 152 routes · 6,332 stops · GPS coordinates · full season timetables · live truck positions.
 
-**[→ Open the map](https://jatskiauto.vercel.app)**
+**[→ Open the map](https://jatskiauto.live)**
 
 > **Disclaimer:** This is a personal vibe coding exercise built for fun. I have no affiliation with Jätskiauto or any ice cream company, and I am not paid by anyone for this. Data comes from the public API at [paikannuspalvelu.fi](https://api.paikannuspalvelu.fi) — the same API that powers the live customer tracking map.
 
-**Data last refreshed:** 2026-04-10
+**Data last refreshed:** 2026-04-14
 
 ---
 
