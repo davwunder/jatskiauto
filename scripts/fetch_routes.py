@@ -1,5 +1,5 @@
 """
-🍦 Jätskiauto Helsinki Metro Route Fetcher
+🍦 Jätskiauto Helsinki Region Route Fetcher
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Fetches all Helsinki metro area ice cream truck stops with GPS coordinates
 and full season schedules from the paikannuspalvelu.fi tracking API.
@@ -129,7 +129,7 @@ def atomic_write_json(path: str, data, **kwargs) -> None:
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main(export_js: bool = False) -> None:
-    print("🍦 Jätskiauto Helsinki Metro Route Fetcher\n")
+    print("🍦 Jätskiauto Helsinki Region Route Fetcher\n")
 
     session = requests.Session()
     session.headers["User-Agent"] = USER_AGENT

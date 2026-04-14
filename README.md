@@ -1,4 +1,4 @@
-# Jätskiauto Helsinki Metro
+# Jätskiauto Helsinki Region
 
 Interactive map of ice cream truck routes across the Helsinki metro area — Helsinki, Vantaa, Espoo and Kauniainen. 152 routes · 6,332 stops · GPS coordinates · full season timetables · live truck positions.
 
